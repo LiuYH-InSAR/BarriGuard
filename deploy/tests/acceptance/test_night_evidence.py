@@ -39,8 +39,8 @@ def _spec(overnight=True):
     )
 
 
-def _feed_session(sess, n):
-    video = H.ensure_video(None)
+def _feed_session(sess, n, video=None):
+    video = H.ensure_video(video)
     cap = cv.VideoCapture(str(video))
     for i in range(n):
         ok, f = cap.read()
@@ -115,7 +115,7 @@ def morning_union(ctx=H.Context()):
 def restart_equivalence(ctx=H.Context()):
     from night_lamp.session import NightSession
     s1 = NightSession("1749", _spec(True))
-    _feed_session(s1, 3000)
+    _feed_session(s1, 3000, ctx.video)
     s1.snapshot(datetime.now(timezone.utc), force=True)
     st = s1.dump_state()
     if st is None:
@@ -143,7 +143,7 @@ def continuous_no_evidence(ctx=H.Context()):
     from night_lamp.session import NightSession
     spec = _spec(False)
     s1 = NightSession("1749", spec)
-    _feed_session(s1, 3000)
+    _feed_session(s1, 3000, ctx.video)
     st = s1.dump_state()
     s2 = NightSession("1749", spec)
     if not s2.load_state(st):
@@ -159,12 +159,12 @@ def continuous_no_evidence(ctx=H.Context()):
     return "no evidence, per-pixel fallback"
 
 
-def _coverage(tick_every, frame_every, seconds=120.0):
+def _coverage(tick_every, frame_every, seconds=120.0, video=None):
     from night_lamp.adapter import NightAdapter
     from night_lamp.session import NightSession
     from server.schedule import FakeClock
     spec = _spec(True)
-    cap = cv.VideoCapture(str(H.ensure_video(None)))
+    cap = cv.VideoCapture(str(H.ensure_video(video)))
     clock = FakeClock(datetime(2026, 9, 21, 20, 0, tzinfo=TZ))
     ad = NightAdapter(NightSession("1749", spec), spec, clock)
     seq, t, nf, nt = 0, 0.0, 0.0, 0.0
@@ -188,8 +188,8 @@ def _coverage(tick_every, frame_every, seconds=120.0):
 
 
 def tick_decoupling(ctx=H.Context()):
-    fine = _coverage(0.02, 0.08)
-    coarse = _coverage(0.30, 0.08)
+    fine = _coverage(0.02, 0.08, video=ctx.video)
+    coarse = _coverage(0.30, 0.08, video=ctx.video)
     if fine < 0.95 or coarse >= fine:
         raise AssertionError(f"coverage fine={fine} coarse={coarse}")
     return f"coverage fine={fine:.3f} coarse={coarse:.3f}"

@@ -29,3 +29,6 @@ logs/
 out_full
 out_pilot
 out_full50
+
+outputs
+.venv-official

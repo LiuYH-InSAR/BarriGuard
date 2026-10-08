@@ -59,7 +59,7 @@ if _ROOT not in sys.path:
 from server.contracts import AlignmentStatus, NightLampSpec  # noqa: E402
 
 from night_lamp import report as R  # noqa: E402
-from night_lamp.periodicity import ac_limited, clean_train, onsets_of  # noqa: E402
+from night_lamp.evidence import REGION_RADIUS, analyse_region  # noqa: E402
 from night_lamp.persist import (  # noqa: E402
     EVIDENCE_VERSION as _EVIDENCE_VERSION,
     STATE_VERSION as _STATE_VERSION,
@@ -103,8 +103,11 @@ _DISCOVERY_EVERY = 50          # samples between rolling discovery passes
 _MIN_DISCOVERY_SAMPLES = 250   # ~40s before the first pass (kill early speckle)
 _WATCH_MIN_ON = 3              # rolling ON floor for a tracked core
 _DEDUP_R = 4                   # px; one tracked core per lamp, not per pass
+_LOOKUP_R = 5                  # px; find recorded series for final representative
+_BACKGROUND_VERSION = 1
 _BASE_BLOCK_ROWS = 256         # warm baseline is built blockwise to bound RAM
 _CHANGE_POINT_DELTA = 20.0     # global-median jump (gray) => reset EMA baseline
+_CHANGE_POINT_RESET_ENABLED = False  # temporary switch; normal EMA remains active
 
 
 def _synchronized(method):
@@ -142,6 +145,9 @@ class TemporalSeries:
         self._grid = {}
         self._n_points = 0
         self._n_total = 0
+        self._regions = None
+        self._sample_times = []
+        self._sample_offsets = []
         if self.cap is None:
             self._buf = np.zeros((self.max_points, _SERIES_INIT_COLS), np.int16)
         else:
@@ -181,7 +187,7 @@ class TemporalSeries:
         self._n_points += 1
         return r
 
-    def lookup(self, y, x, radius=_DEDUP_R):
+    def lookup(self, y, x, radius=_LOOKUP_R):
         rad = int(radius)
         rad2 = rad * rad
         cy, cx = int(y) // self._CELL, int(x) // self._CELL
@@ -197,26 +203,109 @@ class TemporalSeries:
                         best, best_d2 = i, d2
         return best
 
-    def append(self, gray, mask, off):
+    def append(self, gray, mask, off, bgr=None, ts=None):
         npts = self._n_points
         if npts:
             ys, xs = self._pys[:npts], self._pxs[:npts]
             vals = gray[ys, xs].astype(np.int16)
             vals -= np.where(mask[ys, xs], 0, off).astype(np.int16)
             if self.cap is None:
-                if self._n_total >= self._buf.shape[1]:
+                while self._n_total >= self._buf.shape[1]:
                     self._grow()
                 self._buf[:npts, self._n_total] = vals
             else:
+                self._write = self._n_total % self.cap
                 self._buf[:npts, self._write] = vals
-                self._write = (self._write + 1) % self.cap
+        if self.cap is not None:
+            self._write = (self._n_total + 1) % self.cap
+        # Keep reflection series unchanged; regional BGR is separate evidence.
+        if npts and bgr is not None and self._regions is None:
+            self._regions = np.full((*self._buf.shape, 3), np.nan, np.float32)
+        if self._regions is not None:
+            column = self._n_total if self.cap is None else (self._write - 1) % self.cap
+            if npts and bgr is not None:
+                ys, xs = self._pys[:npts], self._pxs[:npts]
+                total = np.zeros((npts, 3), np.float32)
+                counts = np.zeros(npts, np.int32)
+                h, w = gray.shape
+                for dy in range(-REGION_RADIUS, REGION_RADIUS + 1):
+                    for dx in range(-REGION_RADIUS, REGION_RADIUS + 1):
+                        py, px = ys + dy, xs + dx
+                        inside = (py >= 0) & (py < h) & (px >= 0) & (px < w)
+                        ids = np.flatnonzero(inside)
+                        ids = ids[~mask[py[ids], px[ids]]]
+                        total[ids] += bgr[py[ids], px[ids]]
+                        counts[ids] += 1
+                region = total / np.maximum(counts[:, None], 1) - off
+                region[counts == 0] = np.nan
+                self._regions[:npts, column] = region
+            else:
+                self._regions[:npts, column] = np.nan
+        timestamp = np.nan if ts is None else float(ts)
+        if self.cap is None or len(self._sample_times) < self.cap:
+            self._sample_times.append(timestamp)
+            self._sample_offsets.append(float(off))
+        else:
+            column = self._n_total % self.cap
+            self._sample_times[column] = timestamp
+            self._sample_offsets[column] = float(off)
         self._n_total += 1
+
+    def export_arrays(self):
+        """Copy chronological tracked-region matrices; missing observations are NaN."""
+        first = max(0, self._n_total - self.cap) if self.cap else 0
+        indices = np.arange(first, self._n_total)
+        columns = indices % self.cap if self.cap else indices
+        times = np.asarray(self._sample_times, np.float64)[columns]
+        offsets = np.asarray(self._sample_offsets, np.float32)[columns]
+        regional_gray = np.full((self._n_points, len(indices)), np.nan, np.float32)
+        pixel_gray = np.full((self._n_points, len(indices)), np.nan, np.float32)
+        regional_bgr = np.full((self._n_points, len(indices),3), np.nan, np.float32)
+        for row in range(self._n_points):
+            start = max(first, int(self._starts[row]))
+            data = self.region_series(row)
+            if data.size:
+                regional_gray[row, start - first:] = data @ np.array([0.114, 0.587, 0.299])
+                regional_bgr[row, start - first:] = data
+            selected = np.arange(start, self._n_total)
+            columns_one = selected % self.cap if self.cap else selected
+            pixel_gray[row, start - first:] = self._buf[row, columns_one]
+        return {"sample_index": indices, "time_s": times,
+                "exposure_offset": offsets,
+                "row_id": np.arange(self._n_points),
+                "xy": np.column_stack((self._pxs[:self._n_points], self._pys[:self._n_points])),
+                "tracking_start_index": self._starts[:self._n_points].copy(),
+                "pixel_gray_corrected": pixel_gray,
+                "bgr_corrected": regional_bgr,
+                "gray_corrected": regional_gray,
+                "gray_raw": regional_gray + offsets[None, :]}
+
 
     def _grow(self):
         cols = self._buf.shape[1]
         grown = np.zeros((self.max_points, cols * 2), np.int16)
         grown[:, :cols] = self._buf
         self._buf = grown
+        if self._regions is not None:
+            regions = np.full((self.max_points, cols * 2, 3), np.nan, np.float32)
+            regions[:, :cols] = self._regions
+            self._regions = regions
+
+    def region_series(self, r):
+        if r is None or self._regions is None:
+            return np.empty((0, 3), np.float32)
+        start = max(int(self._starts[r]), self._n_total - self.cap) if self.cap else int(self._starts[r])
+        indices = np.arange(start, self._n_total)
+        if self.cap is not None:
+            indices %= self.cap
+        return self._regions[r, indices]
+
+    def region_times(self, r):
+        if r is None:return np.zeros(0)
+        start=max(int(self._starts[r]),self._n_total-self.cap) if self.cap else int(self._starts[r])
+        indices=np.arange(start,self._n_total)
+        if self.cap is not None:indices%=self.cap
+        return np.asarray(self._sample_times)[indices]
 
     def series(self, r):
         """This row's own tracked values from its first sample (no alignment)."""
@@ -269,10 +358,14 @@ class TemporalSeries:
         if self._buf is None:
             return 0
         return int(self._buf.nbytes + self._pys.nbytes + self._pxs.nbytes
-                   + self._starts.nbytes)
+                   + self._starts.nbytes
+                   + (0 if self._regions is None else self._regions.nbytes))
 
     def release(self):
         self._buf = None
+        self._regions = None
+        self._sample_times.clear()
+        self._sample_offsets.clear()
         self._pys = None
         self._pxs = None
         self._starts = None
@@ -293,6 +386,8 @@ class CandidateDiscovery:
         self._series = series
         self._max_candidates = int(max_candidates)
         self._cand_cells = {}
+        self._single_tracks = {}
+        self._single_dropped = 0
         self._dyn_cells = {}
         self._dedup_r = _DEDUP_R
         self.overflow = False
@@ -377,6 +472,7 @@ class CandidateDiscovery:
 
     def release(self):
         self._cand_cells.clear()
+        self._single_tracks.clear()
         self._dyn_cells.clear()
 
 
@@ -425,6 +521,7 @@ class NightSession:
         self._warm_stack = None
         self._warm_n = 0
         self._warm_meds = []
+        self._warm_times = []
         self._first_warm_ts = None
         self._warm_done = False
         self._detrend = None
@@ -437,6 +534,7 @@ class NightSession:
         self._flash_union = None
         self._flash_count = None
         self._n_flash_buckets = 0
+        self._last_lamp_evidence = []
 
         self._n_seen = 0
         self._first_ts = None
@@ -534,12 +632,15 @@ class NightSession:
                             else np.zeros((self._h, self._w), np.uint8)),
             "n_flash_buckets": np.int64(self._n_flash_buckets),
             "evidence_version": np.int64(_EVIDENCE_VERSION),
+            "background_version": np.int64(_BACKGROUND_VERSION),
         }
 
     @_synchronized
     def load_state(self, state) -> bool:
         """从 dump_state 的快照恢复累计，跳过预热；时间态仍由本进程重建。"""
         if not state or self._warm_done:
+            return False
+        if int(state.get("background_version", _BACKGROUND_VERSION)) != _BACKGROUND_VERSION:
             return False
         try:
             base = np.asarray(state["base"], np.float32)
@@ -641,12 +742,13 @@ class NightSession:
                 self._warm_stack[self._warm_n] = gray
                 self._warm_n += 1
             self._warm_meds.append(med)
+            self._warm_times.append(float(ts_mono))
             if self._warm_ready(ts_mono):
                 self._finish_warmup()
             return
 
         dt = None if prev_ts is None else max(float(ts_mono) - prev_ts, 0.0)
-        self._process(gray, med, dt)
+        self._process(gray, med, dt, frame_bgr, ts=ts_mono)
         if self._n_seen % self._discovery_every == 0:
             self._run_discovery()
 
@@ -680,19 +782,20 @@ class NightSession:
         self._on = np.zeros_like(base, np.float32)
         self._peak = np.zeros_like(base, np.float32)
         for i in range(n):
-            self._process(self._warm_stack[i], warm_meds[i])
+            self._process(self._warm_stack[i], warm_meds[i], ts=self._warm_times[i])
         self._bg = np.median(self._warm_stack[:n], axis=0,
                              overwrite_input=True).astype(np.float32)
         self._warm_stack = None
         self._warm_meds = None
+        self._warm_times = None
         self._warm_done = True
 
     def _tracked_row(self, y, x):
         r = self._series.lookup(int(y), int(x))
         return r if self._series.has_data(r) else None
 
-    def _process(self, gray, med, dt=None):
-        if (self._last_med is not None
+    def _process(self, gray, med, dt=None, bgr=None, ts=None):
+        if (_CHANGE_POINT_RESET_ENABLED and self._last_med is not None
                 and abs(med - self._last_med) > _CHANGE_POINT_DELTA):
             self._base_reset = True
         self._last_med = float(med)
@@ -710,7 +813,20 @@ class NightSession:
         np.add(self._on, self._on_hit, out=self._on)
         np.maximum(self._peak, ex, out=self._peak)
         self._update_base(gray, off, dt)
-        self._series.append(gray, self._mask, off)
+        self._series.append(gray, self._mask, off, bgr, ts)
+
+    @_synchronized
+    def intermediate_arrays(self):
+        """Read-only export for offline tools; production does not write these arrays."""
+        if self._released:
+            raise RuntimeError("NightSession is released")
+        arrays = self._series.export_arrays()
+        if self._on is not None and self._n_seen > 0:
+            arrays['duty'] = self._discovery_duty()
+            arrays['on_count'] = self._on.copy()
+            arrays['sample_total'] = np.asarray(self._n_seen, dtype=np.int64)
+            arrays['valid_mask'] = (~self._mask).copy()
+        return arrays
 
     def _update_base(self, gray, off, dt):
         """Slow per-pixel EMA baseline, foreground-protected.
@@ -740,9 +856,35 @@ class NightSession:
     def _run_discovery(self):
         if not self._warm_done or self._n_seen <= 0 or self._on is None:
             return
-        duty = self._on / float(self._n_seen)
+        duty = self._discovery_duty()
         self._discovery.observe(duty, self._on, self._n_seen, self._peak)
+        from night_lamp import single_pixel as sp
+        if sp.ENABLED and self._n_seen >= _MIN_DISCOVERY_SAMPLES:
+            opened=nm.split_comps(duty)[1]>0
+            for y,x in sp.candidates(duty,self._on,self._mask,opened):
+                if (y,x) in self._discovery._single_tracks:continue
+                if len(self._discovery._single_tracks)>=sp.MAX_TRACKS or not self._series.has_room(1):
+                    self._discovery._single_dropped+=1
+                    continue
+                self._discovery._single_tracks[y,x]=self._series.track(y,x)
         self._overflow_any = self._overflow_any or self._discovery.overflow
+
+    def _discovery_duty(self):
+        counts=getattr(self,'_valid_sample_count',None)
+        if counts is None:return self._on/float(self._n_seen)
+        return np.divide(self._on,counts,out=np.zeros_like(self._on),where=counts>0)
+
+    def _record_disturbance_mask(self,row):
+        packed=getattr(self,'_disturbance_packed',None)
+        if packed is None or row is None:return None
+        y=int(self._series._pys[row])-self._disturbance_origin[0]
+        x=int(self._series._pxs[row])-self._disturbance_origin[1]
+        # Auxiliary tracks may lie outside the saved ROI crop.
+        if not (0 <= y < packed.shape[0] and 0 <= x < packed.shape[1]):
+            return None
+        mask=np.unpackbits(packed[y,x],bitorder='little')[:self._n_seen].astype(bool)
+        n=len(self._series.region_series(row))
+        return mask[-n:] if n else np.zeros(0,bool)
 
     def _accumulate_flash(self, flash):
         """OR one burst's flash mask into the night evidence.
@@ -972,7 +1114,7 @@ class NightSession:
 
     def _finalize_inner(self, base_frame_bgr, created_at, night,
                         report_type=R.REPORT_TYPE):
-        duty = self._on / float(self._n_seen)
+        duty = self._discovery_duty()
         swing = self._peak
         dyn, lab, stats, cand_all = nm.split_comps(duty)
 
@@ -1007,12 +1149,14 @@ class NightSession:
         lag_hi = max(lag_lo + 1, int(round(self._period.lag_hi_s * rate)))
 
         rings = []
+        lamp_evidence = []
         n_flash = 0
-        use_union = (report_type == R.REPORT_TYPE
+        use_union = (self._overnight and report_type == R.REPORT_TYPE
                      and self._flash_union is not None
                      and self._n_flash_buckets > 0)
 
         if use_union:
+            lamp_evidence = self._last_lamp_evidence
             # Morning report: render from the accumulated per-hour evidence.
             # The temporal series is per-burst and empty after the final
             # begin_burst, so it must not be re-run here.  dim_map is skipped
@@ -1045,17 +1189,16 @@ class NightSession:
             dyn_pts = nm.dyn_samples(duty, dyn)
             per_rows = ([self._tracked_row(y, x) for y, x in fpts]
                         + [self._tracked_row(y, x) for y, x in dyn_pts])
-            per_data = [self._series.series(r) for r in per_rows]
             n_period_untracked = sum(1 for r in per_rows if r is None)
 
             def flashing(i, y, x):
-                on = (per_data[i].astype(np.float64) - self._base[y, x]) >= nm.ON_DELTA
-                if onsets_of(on) < self._period.onset_min:
-                    return False
-                curve = ac_limited(on, lag_lo, lag_hi)[2]
-                return clean_train(curve, lag_lo, self._period.peak_floor,
-                                   self._period.min_peaks,
-                                   self._period.gap_tol)[0]
+                evidence = analyse_region(self._series.region_series(per_rows[i]),
+                                        self._period, lag_lo, lag_hi, self._series.region_times(per_rows[i]),self._record_disturbance_mask(per_rows[i]))
+                evidence.update(x=int(x), y=int(y),
+                                series_row=per_rows[i],
+                                kind="candidate" if i < len(cand) else "dynamic")
+                lamp_evidence.append(evidence)
+                return evidence["flashing"]
 
             flash_u8 = np.zeros((self._h, self._w), np.uint8)
             for i, c in enumerate(cand):
@@ -1072,7 +1215,22 @@ class NightSession:
                     rings.append((x, y, nm.RING_R))
                     n_flash += 1
             flash = flash_u8 > 0
-            if report_type == R.REPORT_TYPE_BURST:
+            from night_lamp import single_pixel as sp
+            if sp.ENABLED:
+                for y,x in sp.candidates(duty,self._on,self._mask,lab>0):
+                    row=self._discovery._single_tracks.get((y,x))
+                    pixel=self._series.series(row)
+                    times=self._series.region_times(row)
+                    evidence=sp.analyse(pixel,times,self._period,lag_lo,lag_hi,self._record_disturbance_mask(row))
+                    evidence.update(x=x,y=y,series_row=row,kind='single_pixel',
+                                    discovery_hits=float(self._on[y,x]),discovery_ratio=float(duty[y,x]))
+                    lamp_evidence.append(evidence)
+                    if evidence['flashing']:
+                        flash[y,x]=True
+                        rings.append((x,y,nm.RING_R))
+                        n_flash+=1
+            self._last_lamp_evidence = lamp_evidence
+            if report_type == R.REPORT_TYPE_BURST and self._overnight:
                 self._accumulate_flash(flash)
 
         ref = dim == nm.DIM_REFLECT
@@ -1123,6 +1281,16 @@ class NightSession:
         status = R.status_for_alignment(R.STATUS_OK, alignment_status)
 
         meta = {
+            "lamp_evidence": lamp_evidence,
+            "lamp_method": {"version": "regional_two_state_v1",
+                            "signal": "regional_5x5_bgr_weighted_gray",
+                            "sample_rate_hz": rate,
+                            "colour_used": True,
+                            "region_radius_px": REGION_RADIUS,
+                            "yellow_role": "supports_state_separation",
+                            "discovery": "existing_gray_duty",
+                            "background": "original_warmup_median_with_protected_ema",
+                            "evidence_scope": "last_observation_window" if use_union else "current_window"},
             R.M_ALIGNMENT: alignment_status.value,
             R.M_CANDIDATE_OVERFLOW: bool(overflow),
             R.M_SAMPLING: self._sampling_metadata(),
@@ -1143,6 +1311,8 @@ class NightSession:
                            "frac": self._lamp_roi_frac},
             R.M_ONLINE: {
                 "n_tracked_points": int(self._series.n_points),
+                "n_single_pixel_tracks": len(self._discovery._single_tracks),
+                "n_single_pixel_capacity_drops": self._discovery._single_dropped,
                 "n_tracked_candidates": int(self._discovery.n_candidate_cores),
                 "n_tracked_dyn": int(self._discovery.n_dyn_cores),
                 "n_discovery_passes": int(self._discovery.n_passes),
@@ -1195,8 +1365,10 @@ class NightSession:
 
     @_synchronized
     def release(self) -> None:
+        self._last_lamp_evidence = []
         self._warm_stack = None
         self._warm_meds = None
+        self._warm_times = None
         self._base = None
         self._bg = None
         self._on = None

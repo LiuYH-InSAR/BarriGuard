@@ -149,6 +149,16 @@ class PeriodicitySpec:
 
 
 @dataclass
+class PulseSpec:
+    amplitude_min: float = 20.0
+    rise_max_s: float = 0.48
+    width_max_s: float = 1.2
+    return_ratio: float = 0.25
+    min_duration_s: float = 20.0
+    max_gap_s: float = 4.0
+
+
+@dataclass
 class AlignmentSpec:
     min_cc: float = 0.5               # 低于此 -> degraded（或 rejected，按 on_low_cc）
     on_low_cc: AlignmentStatus = AlignmentStatus.DEGRADED
@@ -183,6 +193,7 @@ class NightLampSpec:
     memory: MemorySpec = field(default_factory=MemorySpec)
     baseline: BaselineSpec = field(default_factory=BaselineSpec)
     periodicity: PeriodicitySpec = field(default_factory=PeriodicitySpec)
+    pulse: PulseSpec = field(default_factory=PulseSpec)
     alignment: AlignmentSpec = field(default_factory=AlignmentSpec)
     overnight: OvernightSpec = field(default_factory=OvernightSpec)
 

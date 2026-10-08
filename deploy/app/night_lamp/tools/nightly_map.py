@@ -26,7 +26,7 @@ if _ROOT not in sys.path:
 from night_lamp.periodicity import (  # noqa: E402
     ac_limited, clean_train, onsets_of)
 
-ON_DELTA = 40      # same delta as frozen lamp ON rule
+ON_DELTA = 40      # candidate discovery brightness increment
 BASELINE_N = 60    # evenly spaced frames for per-pixel night baseline
 BLEND = 0.65       # heat weight over dimmed night frame
 PCTL = 99.0        # colormap top = P99 of duty outside dynamic blobs
