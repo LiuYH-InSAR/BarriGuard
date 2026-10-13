@@ -23,6 +23,9 @@ def load_calib(name, fp):
 
 
 def create(name, frame_shape, calib, camera_id=""):
+    if name == "water_gap" and calib.get("backend") == "blocks":
+        from water_barrier.online_blocks import BlockAlgorithm
+        return BlockAlgorithm(frame_shape,calib,camera_id)
     try:
         cls = BUILDERS[name]
     except KeyError:

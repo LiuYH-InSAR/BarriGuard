@@ -58,9 +58,9 @@ def _report_alert_type(report_type: str) -> str:
 
 
 def _target(e) -> str:
-    """告警目标标识：夜灯用 lamp_id，水马用 row_id，兜底 target。"""
+    """告警目标：lamp_id / block_id / row_id，兜底 target。"""
     payload = getattr(e, "payload", None) or {}
-    for key in ("lamp_id", "row_id", "target"):
+    for key in ("lamp_id", "block_id", "row_id", "target"):
         val = payload.get(key)
         if val not in (None, ""):
             return str(val)
@@ -101,6 +101,7 @@ class Reporter:
 
         self._lock = threading.Lock()
         self._last = {}
+        self._episodes = {}
         self._closed = False
         self._dropped = 0
         self._last_drop_log = 0.0
@@ -144,12 +145,18 @@ class Reporter:
         interval = self._alarm_interval.get((key[0], key[1]),
                                             _DEFAULT_ALARM_MIN_INTERVAL_S)
         now = time.monotonic()
+        episode = (getattr(event,"payload",None) or {}).get("episode_id")
         with self._lock:
-            if now - self._last.get(key, 0.0) < interval:
+            new_episode = episode is not None and self._episodes.get(key) != episode
+            if not new_episode and now - self._last.get(key, 0.0) < interval:
                 return
-        self._persist_alarm(event, image_jpeg)
+        saved = self._persist_alarm(event, image_jpeg)
+        if saved:
+            event.evidence_path = saved
         with self._lock:
             self._last[key] = now
+            if episode is not None:
+                self._episodes[key] = episode
         if not self._enabled:
             return
         self._enqueue(("event", event, image_jpeg))
@@ -280,7 +287,7 @@ class Reporter:
             "bbox": box,
             "objects": ([{
                 "class": getattr(obj, "algo", ""),
-                "confidence": payload.get("rer", payload.get("swing", 0.0)),
+                "confidence": payload.get("confidence", payload.get("rer", payload.get("swing", 0.0))),
                 "bbox": box,
             }] if box else []),
             "metadata": payload,

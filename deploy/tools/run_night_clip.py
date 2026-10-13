@@ -22,6 +22,10 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 TOOLS = Path(__file__).resolve().parent
 APP = TOOLS.parent / "app"
 REPO = TOOLS.parent.parent
@@ -33,6 +37,8 @@ from night_lamp.adapter import NightAdapter  # noqa: E402
 from night_lamp.session import NightSession  # noqa: E402
 from server import config  # noqa: E402
 from server.schedule import FakeClock  # noqa: E402
+from gray_matrix import GrayRecordingSession
+from night_intermediates import save_intermediates  # noqa: E402
 
 try:
     import psutil
@@ -52,6 +58,7 @@ def _series_mb(session) -> float:
 
 _TZ = timezone(timedelta(hours=8))
 _META_KEYS = (
+    "lamp_evidence", "lamp_method",
     "alignment_status", "day_alignment", "image_mode", "n_cand", "n_cand_total",
     "n_flash", "n_reflect", "candidate_overflow", "lamp_roi", "night_state",
     "night_qualified", "night_gate", "memory_estimate_mb", "warmup",
@@ -60,7 +67,8 @@ _META_KEYS = (
 _FINAL_KEYS = ("alignment_status", "day_alignment", "image_mode", "n_cand",
                "n_cand_total", "n_flash", "n_reflect", "candidate_overflow",
                "lamp_roi",
-               "night_state", "night_qualified", "memory_estimate_mb", "warmup")
+               "night_state", "night_qualified", "memory_estimate_mb", "warmup",
+               "lamp_evidence", "lamp_method")
 
 
 def _auto_day(camera: str) -> Path | None:
@@ -161,7 +169,9 @@ def run(args) -> dict:
     day = Path(args.day) if args.day else _auto_day(cam.id)
     base = cv.imread(str(day)) if day else None
 
-    session = NightSession(cam.id, spec)
+    matrix_dir = (Path(args.out) if args.out else REPO / "output" / "night_test") / args.scheme / "gray_matrix"
+    session = (GrayRecordingSession(cam.id, spec, matrix_dir)
+               if args.save_intermediate else NightSession(cam.id, spec))
     clock = FakeClock(start)
     adapter = NightAdapter(session, spec, clock)
 
@@ -202,6 +212,9 @@ def run(args) -> dict:
         for rep in adapter.take_reports():
             n_burst += 1
             _save_report(rep, out_dir, "burst", n_burst, clock, full_meta=True)
+            if args.save_intermediate:
+                save_intermediates(session, rep,
+                                   out_dir / "intermediate" / f"burst_{n_burst:03d}")
 
         if next_snap is not None and clock.monotonic() >= next_snap:
             next_snap += snap_every
@@ -242,9 +255,17 @@ def run(args) -> dict:
     cap.release()
     adapter.freeze()
     t_fin = time.perf_counter()
+    if args.save_intermediate:
+        session.recorder.finish()
+        if session.recorder.stream is not None:
+            from masked_background import rebuild
+            rebuild(session)
     # finalize 只读累计状态、不 freeze/release，故可调两次分别出夜图与白天叠加图。
     rep_night = session.finalize(None, clock.wall())
     rep_day = session.finalize(base, clock.wall()) if base is not None else None
+    intermediate = None
+    if args.save_intermediate:
+        intermediate = save_intermediates(session, rep_night, out_dir / "intermediate")
     fin_s = time.perf_counter() - t_fin
 
     if rep_night is not None and rep_night.image_jpeg:
@@ -303,6 +324,7 @@ def run(args) -> dict:
         "wall_elapsed_s": round(time.perf_counter() - t0, 1),
         "finalize_s": round(fin_s, 1),
         "out_dir": str(out_dir),
+        "intermediate_dir": intermediate,
         "day_base": str(day) if day else None,
         "overnight": {"enabled": bool(spec.overnight.enabled),
                       "cadence_minutes": spec.overnight.cadence_minutes,
@@ -338,6 +360,8 @@ def main():
     ap.add_argument("--max-frames", type=int, default=0)
     ap.add_argument("--continuous", action="store_true",
                     help="关闭 overnight burst，整段连续累计（省 CPU 前请权衡内存）")
+    ap.add_argument("--save-intermediate", action=argparse.BooleanOptionalAction,
+                    default=True, help="Save ROI Gray matrix, tracked gray/state matrices and curves (default: enabled)")
     ap.add_argument("--interval-ms", type=int, default=0)
     ap.add_argument("--burst-seconds", type=int, default=0)
     ap.add_argument("--cadence-minutes", type=int, default=0)

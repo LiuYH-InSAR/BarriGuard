@@ -1,0 +1,15 @@
+{
+  "gray_white": true,
+  "light_colour": true,
+  "validity_optimize": true,
+  "colour_regions": true,
+  "region_support": true,
+  "region_bridge": true,
+  "weak_red": true,
+  "weak_white": true,
+  "recent_missing": true,
+  "small_fallback": true,
+  "relative_red": true,
+  "missing_support": true,
+  "pixel_fallback": true
+}

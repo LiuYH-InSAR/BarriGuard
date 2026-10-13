@@ -49,6 +49,7 @@ COPY --from=ffmpeg /opt/ffmpeg /usr/local/bin/ffmpeg
 
 # 自包含生产世界：上下文内 app/ 即容器内 /app（包名不变）。
 COPY app/ /app/
+COPY tools/water_manual*.py tools/water_manual_online.json /tools/
 # 内置一份配置作为兜底；运行期由 docker-compose 挂载覆盖（见 compose）。
 COPY config.yaml /app/config.yaml
 

@@ -20,7 +20,19 @@ def draw_annots(vis, annots):
     """画算法标注：box 画框，point 画圈（给以后 night_lamp 灯点位预留）。"""
     for a in annots:
         color = LEVEL_COLOR.get(a.level, (200, 200, 200))
-        if a.kind == "box" and len(a.box) == 4:
+        if a.kind == "polygon":
+            import numpy as np
+            pts = np.asarray(a.box,np.int32)
+            if a.level == "info":
+                layer = vis.copy()
+                cv.fillPoly(layer,[pts],(150,230,150))
+                vis = cv.addWeighted(layer,.20,vis,.80,0)
+                color = (150,230,150)
+            cv.polylines(vis,[pts],True,color,1 if a.level=="info" else 2,cv.LINE_AA)
+            if a.level != "info":
+                x,y = pts.mean(axis=0).astype(int)
+                cv.putText(vis,a.label,(max(0,x-30),max(12,y)),cv.FONT_HERSHEY_SIMPLEX,.35,color,1,cv.LINE_AA)
+        elif a.kind == "box" and len(a.box) == 4:
             x0, y0, x1, y1 = a.box
             cv.rectangle(vis, (x0, y0), (x1, y1), color, 2)
             cv.putText(vis, a.label, (x0, max(20, y0 - 6)),

@@ -1,0 +1,9 @@
+# Match the validated flashing algorithm's numeric and optional replay dependencies.
+# Preserve the original server dependencies in the existing .venv.
+numpy==2.5.3
+opencv-python==5.0.0.93
+loguru==0.7.3
+PyYAML==6.0.3
+numba==0.68.0
+llvmlite==0.50.0
+tzdata==2026.5

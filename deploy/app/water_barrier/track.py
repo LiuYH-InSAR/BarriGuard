@@ -55,12 +55,15 @@ def patch_distance(profile, patch_mean_lab):
 
 
 def calc_patch_rer(image_bgr, slot_mask, foreground_mask, road_profile,
-                   purity=0.70, ps=8):
+                   purity=0.70, ps=8, trace=None):
     """缺口区域"路露率"：缺口未被水马掩膜覆盖的区域中，真实路面 patch 占比。
 
     非路内容（货车/行人/杂物）RER<=0.10，真移除缺口 RER 0.27-0.65，阈值取 0.25。
     """
     missing = cv2.bitwise_and(slot_mask, cv2.bitwise_not(foreground_mask))
+    if trace is not None:
+        trace.update(missing=missing, missing_pixels=cv2.countNonZero(missing),
+                     profile=road_profile, status="AREA_FAIL")
     if cv2.countNonZero(missing) < 200:
         return 0.0
     lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2Lab).astype(np.float32)
@@ -72,11 +75,22 @@ def calc_patch_rer(image_bgr, slot_mask, foreground_mask, road_profile,
     mp = cropped_mask.reshape(ny, ps, nx, ps).swapaxes(1, 2)
     counts = np.count_nonzero(mp, axis=(2, 3))
     valid = counts >= purity * ps * ps
+    if trace is not None:
+        trace.update(valid=valid, counts=counts, status="NO_VALID_PATCH")
     if not np.any(valid):
         return 0.0
     patch_means = lp[valid].mean(axis=(1, 2))
-    road = sum(1 for m in patch_means
-               if patch_distance(road_profile, m) <= road_profile["dist_th"])
+    if trace is None:
+        road = sum(1 for m in patch_means
+                   if patch_distance(road_profile, m) <= road_profile["dist_th"])
+        return float(road) / float(patch_means.shape[0])
+    distances = np.asarray([patch_distance(road_profile, m) for m in patch_means])
+    road = int(np.count_nonzero(distances <= road_profile["dist_th"]))
+    if trace is not None:
+        labels = np.zeros(valid.shape, np.uint8)
+        labels[valid] = np.where(distances <= road_profile["dist_th"], 2, 1)
+        trace.update(labels=labels, means=patch_means, distances=distances,
+                     road_count=road, valid_count=len(patch_means), status="OK")
     return float(road) / float(patch_means.shape[0])
 
 
@@ -184,7 +198,7 @@ def support_of(st):
     return {rid: st["acc"][rid] / max(1, st["n_obs"][rid]) for rid in st["row_ids"]}
 
 
-def step_support(st, bgr):
+def step_support(st, bgr, trace=None):
     """喂一帧，返回当前报警 [(row_id, sta, box, support)]。
 
     INVALID/OCCLUDED 帧不计入累计；质量门失败时冻结上次输出（不清零）。
@@ -194,7 +208,9 @@ def step_support(st, bgr):
     h, w = bgr.shape[:2]
     kept, skip, packs = detect_frame(
         bgr, st["polys"], st["row_ids"], st["units"], st["trim"], st["conf_th"],
-        st["floor_max"], st["core_exit"], st["min_width"], st["core_min_width"])
+        st["floor_max"], st["core_exit"], st["min_width"], st["core_min_width"], trace=trace)
+    if trace is not None:
+        trace.update(skip=dict(skip), kept=kept)
     if "all" in skip:
         return list(st["alarms"])
     for rid in st["row_ids"]:
@@ -205,9 +221,14 @@ def step_support(st, bgr):
             st["acc"][rid][a:b + 1] += 1
     sup = support_of(st)
     alarms = []
+    if trace is not None:
+        trace["support_runs"] = {}
     for rid in st["row_ids"]:
         pack = packs[rid]
-        for a, b in find_runs(sup[rid], st["support_th"], st["min_box_width"]):
+        detail = [] if trace is not None else None
+        if detail is not None:
+            trace["support_runs"][rid] = detail
+        for a, b in find_runs(sup[rid], st["support_th"], st["min_box_width"], trace=detail):
             alarms.append((rid, (a, b), pixel_box(pack, a, b, w, h),
                            round(float(sup[rid][a:b + 1].max()), 3)))
     st["alarms"] = alarms

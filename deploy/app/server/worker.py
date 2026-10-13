@@ -130,6 +130,9 @@ def _apply_water_params(calib, spec):
 
 def _load_calibration(name, spec):
     """spec.calibration 是（绝对）路径；也可能是已加载内容（dict），两者都兼容。"""
+    if name == "water_gap" and getattr(spec,"backend","legacy") == "blocks":
+        from water_barrier.online_blocks import load_config
+        return load_config(spec)
     cal = getattr(spec, "calibration", "")
     if not isinstance(cal, str):
         return _apply_water_params(cal, spec)
@@ -552,7 +555,7 @@ class CameraWorker:
                     if self._evidence is not None else None)
             if path:
                 for e in events:
-                    if e.kind == "alarm" and e.evidence_path is None:
+                    if e.kind == "alarm" and e.evidence_path is None and not getattr(e,"image_jpeg",None):
                         e.evidence_path = path
             ok, buf = cv.imencode(".jpg", vis, [cv.IMWRITE_JPEG_QUALITY, self._quality])
             jpeg_bytes = buf.tobytes() if ok else None
@@ -560,7 +563,7 @@ class CameraWorker:
                 if e.kind != "alarm":
                     continue
                 try:
-                    self._reporter.submit_event(e, image_jpeg=jpeg_bytes)
+                    self._reporter.submit_event(e, image_jpeg=getattr(e,"image_jpeg",None) or jpeg_bytes)
                 except Exception:
                     logger.exception("[{}] submit_event 失败", self.id)
             with self._lock:

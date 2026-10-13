@@ -22,11 +22,12 @@ class Event:
     kind: str            # "alarm" | "suspected"
     payload: dict = field(default_factory=dict)
     evidence_path: str | None = None
+    image_jpeg: bytes | None = None  # Optional algorithm-selected evidence frame.
 
 
 @dataclass
 class Annotation:
-    kind: str            # "box" | "point"
+    kind: str            # "box" | "point" | "polygon"
     box: tuple = ()      # box 用 (x0,y0,x1,y1), point 用 (x,y)
     label: str = ""
     level: str = "info"  # "alarm" | "suspected" | "info" (server 通用配色)

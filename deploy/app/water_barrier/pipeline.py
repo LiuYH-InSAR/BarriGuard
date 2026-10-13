@@ -124,9 +124,11 @@ class WaterGapAlgorithm:
         self._tracks = []
         T.reset_support(self._sup)
 
-    def _calc_rer(self, median_bgr, box):
+    def _calc_rer(self, median_bgr, box, trace=None):
         """框内路露率（失败回 0.0）。"""
         try:
+            if trace is not None:
+                trace.update(box=box, median=median_bgr, status="NO_ROAD_CROP")
             x0, y0, x1, y1 = box
             sm = np.zeros(median_bgr.shape[:2], np.uint8)
             sm[max(0, y0):y1, max(0, x0):x1] = 255
@@ -140,21 +142,44 @@ class WaterGapAlgorithm:
             profile = T.fit_road_profile(np.vstack([c[:, :min_w] for c in crops]))
             fg = np.where(red_m(median_bgr) | white_m(median_bgr),
                           255, 0).astype(np.uint8)
+            if trace is not None:
+                trace.update(foreground=fg, road_sample=np.vstack([c[:, :min_w] for c in crops]))
             return T.calc_patch_rer(median_bgr, sm, fg, profile,
-                                    self._tcfg["rer_purity"], self._tcfg["patch_size"])
-        except Exception:
+                                    self._tcfg["rer_purity"], self._tcfg["patch_size"], trace=trace)
+        except Exception as exc:
+            if trace is not None:
+                trace.update(status="ERROR", error=str(exc))
             return 0.0
 
-    def step(self, frame, now):
+    def step(self, frame, now, trace=None):
         """处理一帧：报警算法 -> 匹配轨道 -> 更新状态机（RER 确认挡误报）。"""
         tcfg = self._tcfg
         status = "OK"
-        gaps = T.step_support(self._sup, frame)
+        gaps = T.step_support(self._sup, frame, trace=trace)
+        if trace is not None:
+            trace.update(gaps=list(gaps), matches=[], rer_checks=[], tracks=[])
+
+        def confirm(med, box, token):
+            if trace is None:
+                return self._calc_rer(med, box)
+            detail = {}
+            value = self._calc_rer(med, box, trace=detail)
+            if detail is not None:
+                detail.update(token=token, rer=value, push_ordinal=len(trace["matches"]))
+                trace["rer_checks"].append(detail)
+            return value
 
         matched = {id(t): False for t in self._tracks}
         for row_id, _sta, box, support in gaps:
             hit = None
+            attempts = []
             for t in self._tracks:
+                if trace is not None:
+                    width = max(box[2] - box[0], t["box"][2] - t["box"][0])
+                    distance = (((box[0] + box[2] - t["box"][0] - t["box"][2]) / 2) ** 2
+                                + ((box[1] + box[3] - t["box"][1] - t["box"][3]) / 2) ** 2) ** .5
+                    attempts.append(dict(token=id(t), box=t["box"], iou=_iou(box, t["box"]),
+                                         center_distance=distance, center_limit=tcfg["match_center_ratio"] * width))
                 if _match(box, t["box"], tcfg):
                     hit = t
                     break
@@ -162,18 +187,29 @@ class WaterGapAlgorithm:
                 hit = T.new_track(box, tcfg)
                 self._tracks.append(hit)
                 matched[id(hit)] = False
+            if trace is not None:
+                trace["matches"].append(dict(token=id(hit), row=row_id, box=box,
+                                             new=not attempts or all(a["token"] != id(hit) for a in attempts),
+                                             attempts=attempts))
             hit["box"] = box
             hit["severity"], hit["row_id"] = support, row_id
             hit["last_seen"] = now
             T.track_push_frame(hit, frame)
             T.track_update(hit, True, now,
-                           lambda med, _b=box: self._calc_rer(med, _b))
+                           lambda med, _b=box, _t=id(hit): confirm(med, _b, _t))
             matched[id(hit)] = True
 
         for t in self._tracks:
             if not matched.get(id(t), False):
                 T.track_update(t, False, now,
-                               lambda med, _b=t["box"]: self._calc_rer(med, _b))
+                               lambda med, _b=t["box"], _t=id(t): confirm(med, _b, _t))
+
+        if trace is not None:
+            trace["tracks"] = [dict(
+                {k: v for k, v in t.items() if k != "frames"}, token=id(t),
+                matched=matched.get(id(t), False), frame_count=len(t["frames"]),
+                removed=now - t["last_seen"] >= tcfg["track_stale_s"] and t["state"] == T.NORMAL)
+                for t in self._tracks]
 
         self._tracks = [t for t in self._tracks
                         if now - t["last_seen"] < tcfg["track_stale_s"]

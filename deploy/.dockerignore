@@ -25,7 +25,9 @@ night_lamp/output/
 
 # 测试与部署脚手架自身（不进镜像）
 tests/
-tools/
+tools/*
+!tools/water_manual*.py
+!tools/water_manual_online.json
 Dockerfile
 docker-compose.yml
 .dockerignore

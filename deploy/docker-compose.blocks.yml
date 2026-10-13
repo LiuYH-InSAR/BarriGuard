@@ -1,0 +1,6 @@
+services:
+  barriguard:
+    environment:
+      BARRIGUARD_CONFIG: /app/config_blocks.yaml
+    volumes:
+      - ./config_blocks.yaml:/app/config_blocks.yaml:ro

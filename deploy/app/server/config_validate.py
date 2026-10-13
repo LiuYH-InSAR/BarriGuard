@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import math
 import typing
 from dataclasses import fields as _dc_fields, is_dataclass
 from datetime import datetime
@@ -30,6 +31,7 @@ from .contracts import (
     NightLampSpec,
     OvernightSpec,
     PeriodicitySpec,
+    PulseSpec,
     RuntimeConfig,
     SamplingSpec,
     ScheduleSpec,
@@ -81,6 +83,7 @@ NESTED_SPECS = {
     "memory": MemorySpec,
     "baseline": BaselineSpec,
     "periodicity": PeriodicitySpec,
+    "pulse": PulseSpec,
     "alignment": AlignmentSpec,
     "overnight": OvernightSpec,
     "detect": DetectSpec,
@@ -304,7 +307,17 @@ def _parse_nested(cls, d, where):
     for f in _dc_fields(cls):
         if f.name in d:
             kwargs[f.name] = _coerce(f.type, d[f.name], f"{where}.{f.name}")
-    return cls(**kwargs)
+    spec = cls(**kwargs)
+    if cls is PulseSpec:
+        for key in ("amplitude_min", "rise_max_s", "width_max_s", "min_duration_s", "max_gap_s"):
+            value = getattr(spec, key)
+            if not math.isfinite(value) or value <= 0:
+                raise ConfigError(f"{where}.{key} must be finite and positive")
+        if not math.isfinite(spec.return_ratio) or not 0 < spec.return_ratio < 1:
+            raise ConfigError(f"{where}.return_ratio must be between 0 and 1")
+        if spec.rise_max_s > spec.width_max_s:
+            raise ConfigError(f"{where}.rise_max_s must not exceed width_max_s")
+    return spec
 
 
 def _binding_allowed(name):
@@ -321,6 +334,10 @@ def _build_spec(name, b, schedule, status, where, base_dir):
             continue
         if key == "status":
             kwargs[key] = status
+            continue
+        if key in ("manual_blocks", "manual_reference", "manual_parameters"):
+            if b.get(key):
+                kwargs[key] = resolve_resource(b[key], base_dir, f"{where}.{key}")
             continue
         if key == "calibration":
             if key in b:  # water_gap 的标定数据文件引用
@@ -364,6 +381,11 @@ def _parse_binding(name, b, where, base_dir):
         CalibrationStatus, b.get("status", "ready"), f"{where}.status"
     )
     spec = _build_spec(name, b, schedule, status, where, base_dir)
+    if name == "water_gap":
+        if spec.backend not in ("legacy", "blocks") or spec.detect_hz <= 0:
+            raise ConfigError(f"{where}: backend must be legacy/blocks and detect_hz positive")
+        if spec.backend == "blocks" and not (spec.manual_blocks and spec.manual_reference and spec.manual_parameters):
+            raise ConfigError(f"{where}: blocks requires manual_blocks/manual_reference/manual_parameters")
     return AlgorithmBinding(schedule=schedule, spec=spec)
 
 

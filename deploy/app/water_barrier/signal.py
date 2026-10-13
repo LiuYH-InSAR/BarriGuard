@@ -74,8 +74,8 @@ def _resample_y(ym, cnt):
     return cv2.resize(filled.reshape(1, -1), (REF, 1), interpolation=cv2.INTER_LINEAR).ravel()
 
 
-def sample_row(bgr, poly_norm, step_px=STEP, minh=MINH):
-    """Sample along barrier axis. Section split matches E5: top 60% white, bottom 40% red."""
+def sample_row(bgr, poly_norm, step_px=STEP, minh=MINH, trace=None):
+    """Top 60% scores white; bottom 40% scores either red or white."""
     h, w = bgr.shape[:2]
     pts = poly_norm * np.array([w, h], dtype=np.float32)
     ax = _row_axis(poly_norm)
@@ -122,14 +122,25 @@ def sample_row(bgr, poly_norm, step_px=STEP, minh=MINH):
     white_sum = np.bincount(ss[is_white], weights=white_px[order][is_white], minlength=m)
     white_cnt = np.bincount(ss[is_white], minlength=m)
     red_sum = np.bincount(ss[~is_white], weights=red_px[order][~is_white], minlength=m)
+    # HSV boundary pixels may match both masks; count each lower pixel once.
+    lower_white_sum = np.bincount(ss[~is_white],
+        weights=(white_px * (1 - red_px))[order][~is_white], minlength=m)
     red_cnt = np.bincount(ss[~is_white], minlength=m)
     foreign_sum = np.bincount(ss, weights=foreign_px[order], minlength=m)
 
     valid_station = cnt >= minh
+    if trace is not None:
+        split = np.zeros(mask.shape, np.uint8)
+        split[ys[order], xs[order]] = np.where(is_white, 1, 2)
+        trace.update(origin=(int(x0), int(y0)), split=split, counts=cnt,
+                     white_ratio=white_sum / np.maximum(white_cnt, 1),
+                     red_ratio=red_sum / np.maximum(red_cnt, 1),
+                     lower_white_ratio=lower_white_sum / np.maximum(red_cnt, 1))
     col = np.zeros(m, np.float32)
     foreign_col = np.zeros(m, np.float32)
     ok = valid_station & (white_cnt > 0) & (red_cnt > 0)
-    col[ok] = (0.6 * red_sum[ok] / red_cnt[ok] + 0.4 * white_sum[ok] / white_cnt[ok]).astype(np.float32)
+    col[ok] = (0.6 * (red_sum[ok] + lower_white_sum[ok]) / red_cnt[ok]
+               + 0.4 * white_sum[ok] / white_cnt[ok]).astype(np.float32)
     foreign_col[valid_station] = (foreign_sum[valid_station] / cnt[valid_station]).astype(np.float32)
 
     abs_y = (ys + y0).astype(np.float32)
@@ -211,7 +222,7 @@ def mbase(sm, v):
 
 
 def detect(sm, bs, v, floor_max=FLOOR_MAX, core_exit=CORE_EXIT,
-           min_width=MIN_WIDTH, core_min_width=CORE_MIN_WIDTH):
+           min_width=MIN_WIDTH, core_min_width=CORE_MIN_WIDTH, trace=None):
     """Envelope discovery d>0.25, extend d>0.125; core is S<floor_max run."""
     d = bs - sm
     outs, i, n = [], 0, len(sm)
@@ -222,7 +233,15 @@ def detect(sm, bs, v, floor_max=FLOOR_MAX, core_exit=CORE_EXIT,
         j = i
         while j < n and v[j] and d[j] > 0.125:
             j += 1
+        detail = None
+        if trace is not None:
+            detail = {"env": (int(i), int(j - 1)), "env_width": j - i,
+                      "valid_ratio": float(v[i:j].sum() / max(1, j - i)),
+                      "prom": round(float(d[i:j].max()), 3), "trials": []}
+            trace.append(detail)
         if v[i:j].sum() / max(1, j - i) < 0.9 or (j - i) < min_width:
+            if detail is not None:
+                detail["reason"] = "ENVELOPE_FAIL"
             i = j
             continue
         env = (int(i), int(j - 1))
@@ -237,24 +256,33 @@ def detect(sm, bs, v, floor_max=FLOOR_MAX, core_exit=CORE_EXIT,
             e = m
             while e - 1 >= k and sm[e - 1] >= floor_max:
                 e -= 1
+            if trace is not None:
+                detail["trials"].append({"start": int(k), "end": int(e - 1),
+                                         "width": int(e - k), "floor": float(sm[k:e].min())})
             if e - k >= core_min_width:
                 best = (int(k), int(e - 1), int(e - k), round(float(sm[k:e].min()), 3))
                 break
             k = m
         outs.append({"env": env, "core": best, "prom": round(float(d[i:j].max()), 3),
                      "reason": "FLOOR+WIDTH" if best else "FLOOR_FAIL"})
+        if detail is not None:
+            detail.update(outs[-1])
         i = j
     return outs
 
 
-def frame_valid(bgr):
+def frame_valid(bgr, trace=None):
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
     mag = np.sqrt(gx * gx + gy * gy)
     h, w = mag.shape
     ph, pw = h // 32, w // 32
-    pmax = float(mag[:ph * 32, :pw * 32].reshape(ph, 32, pw, 32).mean(axis=(1, 3)).max())
+    blocks = mag[:ph * 32, :pw * 32].reshape(ph, 32, pw, 32).mean(axis=(1, 3))
+    pmax = float(blocks.max())
+    if trace is not None:
+        trace.update(pmax=pmax, blocks=blocks, block_yx=np.unravel_index(blocks.argmax(), blocks.shape),
+                     passed=pmax < PMAX_TH)
     return pmax < PMAX_TH, round(pmax, 3)
 
 
@@ -288,7 +316,7 @@ def confidence(prom, alen_stations, unit):
 
 
 def detect_frame(bgr, polys, row_ids, units, trim, conf_th,
-                 floor_max, core_exit, min_width, core_min_width):
+                 floor_max, core_exit, min_width, core_min_width, trace=None):
     """单帧 -> (kept, skip, packs)。
 
     kept {行id: [(a, b)]} REF 站坐标 core 区间；packs {行id: pack} 供成框复用，
@@ -296,32 +324,54 @@ def detect_frame(bgr, polys, row_ids, units, trim, conf_th,
     """
     if len(polys) != len(row_ids):
         raise ValueError(f"polys行数({len(polys)})与row_ids({len(row_ids)})不一致")
-    ok, _ = frame_valid(bgr)
+    if trace is not None:
+        trace.update(quality={}, rows={})
+    ok, _ = frame_valid(bgr, trace["quality"] if trace is not None else None)
     if not ok:
         return {}, {"all": "INVALID"}, {}
     kept, skip, packs = {}, {}, {}
     for rid, poly in zip(row_ids, polys):
         if rid not in units:
             raise ValueError(f"行缺U标定: {rid}")
-        pack = sample_row(bgr, poly)
+        detail = {} if trace is not None else None
+        pack = sample_row(bgr, poly, trace=detail)
         packs[rid] = pack
         valid = apply_end_trim(pack, trim)["v"]
+        if detail is not None:
+            trace["rows"][rid] = detail
+            detail.update(pack=pack, valid=valid, candidates=[], kept=[],
+                          foreign_run=maxrun(valid & (pack["f"] > FOREIGN_TH)),
+                          dark_run=maxrun(valid & (pack["s"] < DARK_TH)), status="OK")
         if is_occluded(pack, valid):
+            if detail is not None:
+                detail["status"] = "OCCLUDED"
             kept[rid] = []
             skip[rid] = "OCCLUDED"
             continue
         unit = units[rid]
         sm = smooth(pack["s"], valid)
+        bs = mbase(sm, valid)
+        if detail is not None:
+            detail.update(smooth=sm, baseline=bs, local_mean=_masked_mean(sm, valid))
         row = []
-        for c in detect(sm, mbase(sm, valid), valid, floor_max=floor_max,
+        for c in detect(sm, bs, valid, floor_max=floor_max,
                         core_exit=core_exit, min_width=min_width,
-                        core_min_width=core_min_width):
+                        core_min_width=core_min_width,
+                        trace=detail["candidates"] if detail is not None else None):
             if not (c["reason"] == "FLOOR+WIDTH" and c["core"]):
                 continue
             a, b = c["core"][0], c["core"][1]
+            if detail is not None:
+                candidate = next(item for item in detail["candidates"] if item["env"] == c["env"])
+                candidate.update(
+                    native_width=(b - a) / REF * pack["M"],
+                    confidence=confidence(c["prom"], (b - a) / REF * pack["M"], unit),
+                    kept=confidence(c["prom"], (b - a) / REF * pack["M"], unit) >= conf_th)
             if confidence(c["prom"], (b - a) / REF * pack["M"], unit) >= conf_th:
                 row.append((a, b))
         kept[rid] = row
+        if detail is not None:
+            detail["kept"] = list(row)
     return kept, skip, packs
 
 
@@ -341,7 +391,7 @@ def pixel_box(pack, a, b, w, h):
     return (x0, y0, x1, y1)
 
 
-def find_runs(sup, thresh, min_width):
+def find_runs(sup, thresh, min_width, trace=None):
     """support 一维数组 -> [(a, b)] REF 站区间（闭区间）。"""
     boxes, i = [], 0
     while i < REF:
@@ -351,6 +401,8 @@ def find_runs(sup, thresh, min_width):
         j = i
         while j < REF and sup[j] >= thresh:
             j += 1
+        if trace is not None:
+            trace.append(dict(start=int(i), end=int(j-1), width=int(j-i), kept=j-i >= min_width))
         if j - i >= min_width:
             boxes.append((int(i), int(j - 1)))
         i = j

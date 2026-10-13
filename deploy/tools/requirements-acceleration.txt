@@ -1,0 +1,2 @@
+# Optional offline background replay accelerator; NumPy fallback remains available.
+numba==0.68.0
