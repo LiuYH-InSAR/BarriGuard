@@ -36,7 +36,7 @@ cameras:
       report_interval_s: 3600
       alarm_min_interval_s: 3600
       confidence: 0.25
-      alarm_hold_s: 10.0
+      alarm_hold_s: 30.0
       reconfirm_s: 5.0
       detect:
         trim: 0.04
@@ -60,7 +60,8 @@ cameras:
       manual_blocks: roi_configs/blocks/1749.json
       manual_reference: roi_configs/blocks/references/1749.png
       manual_parameters: ../tools/water_manual_online.json
-      detect_hz: 2.0
+      detect_hz: 0.0
+      max_observation_gap_s: 3.0
     night_lamp:
       enabled: true
       schedule: night
@@ -118,7 +119,7 @@ cameras:
       report_interval_s: 3600
       alarm_min_interval_s: 3600
       confidence: 0.5
-      alarm_hold_s: 10.0
+      alarm_hold_s: 30.0
       reconfirm_s: 5.0
       detect:
         trim: 0.04
@@ -142,7 +143,8 @@ cameras:
       manual_blocks: roi_configs/blocks/1750.json
       manual_reference: roi_configs/blocks/references/1750.png
       manual_parameters: ../tools/water_manual_online.json
-      detect_hz: 2.0
+      detect_hz: 0.0
+      max_observation_gap_s: 3.0
     night_lamp:
       enabled: true
       schedule: night

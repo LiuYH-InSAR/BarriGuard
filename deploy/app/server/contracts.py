@@ -107,7 +107,8 @@ class WaterGapSpec:
     manual_blocks: str = ""
     manual_reference: str = ""
     manual_parameters: str = ""
-    detect_hz: float = 2.0
+    detect_hz: float = 0.0  # 0: process latest frames without a frequency limit.
+    max_observation_gap_s: float = 3.0
     schedule: str = "day"             # 由 config 决定，不写死
     status: CalibrationStatus = CalibrationStatus.READY  # manifest-only, no runtime branch
 

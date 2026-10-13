@@ -88,6 +88,29 @@ class OnlineTests(unittest.TestCase):
         event=a.step(f,.5).events[0]
         self.assertEqual(event.payload['evidence_at_monotonic_s'],.5)
 
+    def test_realtime_has_no_frequency_gate(self):
+        a=self.make_algo();a._config['detect_hz']=0.
+        frame=np.full((96,96,3),100,np.uint8)
+        with patch.object(a._detector,'step',wraps=a._detector.step) as detect:
+            a.step(frame,0.)
+            a.step(frame,.1)
+            self.assertEqual(detect.call_count,2)
+
+    def test_thirty_second_window_with_slow_frames(self):
+        from water_manual import ManualSpec
+        from water_manual_recent import RecentMissing
+        recent=RecentMissing(ManualSpec(hold_s=30.,max_observation_gap_s=3.))
+        for i in range(26):
+            total,confirmed=recent.update('gap',1,round(i*1.2,1))
+            self.assertEqual(confirmed,i==25)
+        self.assertAlmostEqual(total,30.)
+        _,confirmed=recent.update('gap',1,34.)
+        self.assertFalse(confirmed)  # four-second interruption clears evidence
+        masked=RecentMissing(ManualSpec(hold_s=30.,max_observation_gap_s=3.))
+        for i in range(26):
+            _,confirmed=masked.update('gap',-1 if i==10 else 1,round(i*1.2,1))
+        self.assertFalse(confirmed)  # unknown time is not missing support
+
     def test_configs_and_build(self):
         from server.config import load_runtime
         from server.worker import _load_calibration
@@ -97,6 +120,9 @@ class OnlineTests(unittest.TestCase):
         config=load_runtime(DEPLOY/'config_blocks.yaml')
         for camera in config.cameras:
             spec=camera.algorithms['water_gap'].spec
+            self.assertEqual(spec.detect_hz,0.)
+            self.assertEqual(spec.max_observation_gap_s,3.)
+            self.assertEqual(spec.alarm_hold_s,30.)
             calibration=_load_calibration('water_gap',spec)
             algo=create('water_gap',calibration['reference'].shape,calibration,camera.id)
             self.assertIsInstance(algo,BlockAlgorithm)

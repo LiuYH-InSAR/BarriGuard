@@ -3,13 +3,14 @@
 
 启用：用config_blocks.yaml启动server。原config.yaml保持legacy，可随时切回。
 逐摄像头water_gap.backend可取legacy/blocks；blocks必须提供manual_blocks、
-manual_reference、manual_parameters和正数detect_hz（当前2）。
+manual_reference、manual_parameters；detect_hz=0表示尽力处理最新帧，正数保留限频能力。
+max_observation_gap_s独立配置，当前3秒；超过该间隔清空近期累计。
 原calibration保留以便切回；legacy的detect/track/confidence不用于blocks判定。
 
 直接复用deploy/tools/water_manual.py的ManualDetector和辅助模块，不调用replay、
 网页、矩阵或plot导出。部署必须包含deploy/tools源文件。
 线上参数独立保存在tools/water_manual_online.json，避免修改测试参数影响线上。
-近期累计强制开启，hold_s取water_gap.alarm_hold_s（10秒）。
+近期累计强制开启，hold_s取water_gap.alarm_hold_s（当前30秒，需95%缺失支持）。
 参考固定副本：app/roi_configs/blocks/references/{1749,1750}.png。
 1749来自已标注原图；1750来自1750_20261013_100240.png。
 沿用原day时段及夜灯配置，未新增水马全天或自动参考更新。
@@ -22,7 +23,7 @@ UNKNOWN不重开事件；实际NORMAL连续reset_s（5秒）后结束事件。
 恢复后再次确认ERROR生成新episode，Reporter允许绕过上一事件的间隔。
 不推单独恢复通知；进程重启重建检测状态，重新确认后生成新事件。
 
-只在内存保留最近5个检测帧（2Hz约2秒范围），告警图片候选必须含该块缺失票，
+只在内存保留最近5个检测帧（实时模式时间跨度取决于处理速度），告警图片候选必须含该块缺失票，
 优先选变化较小、有效覆盖较高的一帧。目标块画红框，row浅绿20%透明。
 没有更好候选则使用实际缺失证据；事件携带JPEG，worker不能用当前帧覆盖。
 这些是异常证据帧，不使用后来正常的干净帧假装缺失证据。

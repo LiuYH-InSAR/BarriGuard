@@ -34,7 +34,7 @@ def load_config(spec):
     parameters.setdefault('pixel_fallback',True)
     parameters['recent_missing'] = True
     parameters['hold_s'] = spec.alarm_hold_s
-    parameters['max_observation_gap_s'] = max(parameters.get('max_observation_gap_s',1.),2/spec.detect_hz)
+    parameters['max_observation_gap_s'] = spec.max_observation_gap_s
     core.ManualSpec(**parameters).validate()
     reference = cv.imread(spec.manual_reference)
     if reference is None:
@@ -89,7 +89,8 @@ class BlockAlgorithm:
         return (encoded.tobytes() if ok else None),chosen['time']
 
     def step(self, frame, now):
-        if self._last is not None and now-self._last < 1/self._config['detect_hz']-1e-6:
+        hz = self._config['detect_hz']
+        if hz > 0 and self._last is not None and now-self._last < 1/hz-1e-6:
             return AlgoResult([],self._latest.annots,self._latest.debug)
         results = self._detector.step(frame,now)
         dt = 0 if self._last is None else max(0,now-self._last)
