@@ -120,7 +120,7 @@ class OnlineTests(unittest.TestCase):
         config=load_runtime(DEPLOY/'config_blocks.yaml')
         for camera in config.cameras:
             spec=camera.algorithms['water_gap'].spec
-            self.assertEqual(spec.detect_hz,0.)
+            self.assertEqual(spec.detect_hz,2.)
             self.assertEqual(spec.max_observation_gap_s,3.)
             self.assertEqual(spec.alarm_hold_s,30.)
             calibration=_load_calibration('water_gap',spec)

@@ -4,6 +4,7 @@
 启用：用config_blocks.yaml启动server。原config.yaml保持legacy，可随时切回。
 逐摄像头water_gap.backend可取legacy/blocks；blocks必须提供manual_blocks、
 manual_reference、manual_parameters；detect_hz=0表示尽力处理最新帧，正数保留限频能力。
+当前两路配置detect_hz=2，即每秒最多检测2次；处理耗时较长时实际频率会更低。
 max_observation_gap_s独立配置，当前3秒；超过该间隔清空近期累计。
 原calibration保留以便切回；legacy的detect/track/confidence不用于blocks判定。
 
