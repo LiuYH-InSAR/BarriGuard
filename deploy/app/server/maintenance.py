@@ -14,7 +14,7 @@ from loguru import logger
 _SWEEP_INTERVAL_S = 3600.0
 _MIN_INTERVAL_S = 60.0
 # 日志目录不参与 retention 清理：日志是排障底料，不能被 48h TTL 顺手删掉。
-DEFAULT_SKIP_NAMES = ("logs",)
+DEFAULT_SKIP_NAMES = ("logs", "night_offline")
 
 
 class Sweeper:

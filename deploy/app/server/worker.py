@@ -50,6 +50,9 @@ def _default_day_runner(camera, spec, algo):
 def _default_night_adapter(camera_id, spec, clock):
     from night_lamp.adapter import NightAdapter
     from night_lamp.session import NightSession
+    if spec.overnight.record_local:
+        from night_lamp.local_recording import RecordedAdapter
+        return RecordedAdapter(NightSession(camera_id, spec), spec, clock)
     return NightAdapter(NightSession(camera_id, spec), spec, clock)
 
 
@@ -240,6 +243,13 @@ class CameraWorker:
         """落盘（若配置 output_dir）+ 异步 callback；任何失败都不冒泡。"""
         if report is None:
             return
+        binding = self._camera.algorithms.get("night_lamp")
+        if (getattr(report, "algorithm", None) == "night_lamp" and binding
+                and binding.spec.overnight.record_local):
+            from night_lamp.local_recording import save_report
+            save_report(report, binding.spec.overnight)
+            if report.report_type == "night_heatmap_burst":
+                return
         if self._store is not None:
             try:
                 self._store.save(report)

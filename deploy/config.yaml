@@ -86,7 +86,7 @@ cameras:
         pulse: {amplitude_min: 20.0, rise_max_s: 0.48, width_max_s: 1.2,
                 return_ratio: 0.25, min_duration_s: 20.0, max_gap_s: 4.0}
         alignment: {min_cc: 0.5, on_low_cc: degraded}
-        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 120, anchor: wall}
+        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 300, anchor: wall, record_local: true, record_root: /app/data/night_offline, video_days: 3, result_days: 7}
 
   - id: "1750"
     name: "Mobile Camera 1750"
@@ -128,4 +128,4 @@ cameras:
         pulse: {amplitude_min: 20.0, rise_max_s: 0.48, width_max_s: 1.2,
                 return_ratio: 0.25, min_duration_s: 20.0, max_gap_s: 4.0}
         alignment: {min_cc: 0.5, on_low_cc: degraded}
-        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 120, anchor: wall}
+        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 300, anchor: wall, record_local: true, record_root: /app/data/night_offline, video_days: 3, result_days: 7}

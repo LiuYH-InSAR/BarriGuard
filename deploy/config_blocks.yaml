@@ -104,8 +104,12 @@ cameras:
       overnight:
         enabled: true
         cadence_minutes: 60
-        burst_seconds: 120
+        burst_seconds: 300
         anchor: wall
+        record_local: true
+        record_root: /app/data/night_offline
+        video_days: 3
+        result_days: 7
 - id: '1750'
   name: Mobile Camera 1750
   rtsp_url: rtsp://118.140.234.166:8554/dahua1002491
@@ -187,5 +191,9 @@ cameras:
       overnight:
         enabled: true
         cadence_minutes: 60
-        burst_seconds: 120
+        burst_seconds: 300
         anchor: wall
+        record_local: true
+        record_root: /app/data/night_offline
+        video_days: 3
+        result_days: 7

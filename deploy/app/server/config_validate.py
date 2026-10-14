@@ -308,6 +308,13 @@ def _parse_nested(cls, d, where):
         if f.name in d:
             kwargs[f.name] = _coerce(f.type, d[f.name], f"{where}.{f.name}")
     spec = cls(**kwargs)
+    if cls is OvernightSpec and spec.record_local:
+        if not spec.enabled or spec.anchor != "wall":
+            raise ConfigError(f"{where}.record_local requires enabled=true and anchor=wall")
+        if spec.video_days < 1 or spec.result_days < 1:
+            raise ConfigError(f"{where} retention days must be positive")
+        if Path(spec.record_root).name != "night_offline":
+            raise ConfigError(f"{where}.record_root must end with night_offline (independent retention)")
     if cls is PulseSpec:
         for key in ("amplitude_min", "rise_max_s", "width_max_s", "min_duration_s", "max_gap_s"):
             value = getattr(spec, key)

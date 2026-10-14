@@ -185,6 +185,10 @@ class OvernightSpec:
     cadence_minutes: int = 60         # burst 间隔
     burst_seconds: int = 120          # 每段连续观测时长
     anchor: str = "stream"            # stream | wall
+    record_local: bool = False
+    record_root: str = "/app/data/night_offline"
+    video_days: int = 3
+    result_days: int = 7
 
 
 @dataclass
