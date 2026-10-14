@@ -69,6 +69,12 @@ cameras:
                 rer_purity: 0.70, patch_size: 8}
 
       night_lamp:
+        lamp_checks:
+          enabled: true
+          polygons: roi_configs/lamps/1749.json
+          heatmap_ratio: 0.10
+          hotspot_strength_min: 0.30
+          lit_hours: 3
         enabled: true
         schedule: night
         status: ready                 # manifest-only
@@ -111,6 +117,12 @@ cameras:
                 rer_purity: 0.70, patch_size: 8}
 
       night_lamp:
+        lamp_checks:
+          enabled: true
+          polygons: roi_configs/lamps/1750.json
+          heatmap_ratio: 0.10
+          hotspot_strength_min: 0.30
+          lit_hours: 3
         enabled: true                 # 明确启用，不得因 pending 静默关闭
         schedule: night
         status: calibration_pending   # 8 盏 active，参数待重标（manifest-only）

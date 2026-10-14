@@ -1,0 +1,327 @@
+{
+  "version": "4.1.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "lamp01",
+      "score": null,
+      "points": [
+        [
+          154.75113122171945,
+          230.49773755656113
+        ],
+        [
+          162.44343891402715,
+          246.10859728506793
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp02",
+      "score": null,
+      "points": [
+        [
+          341.9871794871795,
+          171.0897435897436
+        ],
+        [
+          351.28205128205127,
+          179.4230769230769
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp03",
+      "score": null,
+      "points": [
+        [
+          523.5294117647059,
+          152.6696832579186
+        ],
+        [
+          533.4841628959276,
+          163.98190045248873
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp04",
+      "score": null,
+      "points": [
+        [
+          616.5158371040724,
+          135.9276018099548
+        ],
+        [
+          625.3393665158371,
+          142.03619909502268
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp05",
+      "score": null,
+      "points": [
+        [
+          667.6470588235294,
+          116.24434389140275
+        ],
+        [
+          676.9230769230769,
+          125.29411764705885
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp06",
+      "score": null,
+      "points": [
+        [
+          777.6018099547512,
+          112.1719457013575
+        ],
+        [
+          783.710407239819,
+          115.11312217194573
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp07",
+      "score": null,
+      "points": [
+        [
+          791.6289592760181,
+          109.90950226244348
+        ],
+        [
+          796.606334841629,
+          112.85067873303171
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp08",
+      "score": null,
+      "points": [
+        [
+          851.5837104072398,
+          107.19457013574664
+        ],
+        [
+          856.5610859728507,
+          111.04072398190048
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp09",
+      "score": null,
+      "points": [
+        [
+          893.0025445292621,
+          106.7302798982189
+        ],
+        [
+          895.0381679389312,
+          109.14758269720107
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp10",
+      "score": null,
+      "points": [
+        [
+          899.7455470737913,
+          108.89312977099243
+        ],
+        [
+          901.5267175572519,
+          111.05597964376597
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp11",
+      "score": null,
+      "points": [
+        [
+          907.1246819338422,
+          108.38422391857513
+        ],
+        [
+          909.6692111959287,
+          110.80152671755731
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp12",
+      "score": null,
+      "points": [
+        [
+          915.0127226463104,
+          107.7480916030535
+        ],
+        [
+          917.0483460559796,
+          109.27480916030541
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp13",
+      "score": null,
+      "points": [
+        [
+          922.9007633587786,
+          107.87531806615782
+        ],
+        [
+          925.1908396946565,
+          109.52926208651405
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp14",
+      "score": null,
+      "points": [
+        [
+          748.3539094650205,
+          114.1769547325103
+        ],
+        [
+          750.8230452674896,
+          117.05761316872429
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "lamp15",
+      "score": null,
+      "points": [
+        [
+          877.6,
+          107.0
+        ],
+        [
+          879.1111111111111,
+          108.22222222222223
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "1002491_20260929_2000.jpg",
+  "imageData": null,
+  "imageHeight": 1080,
+  "imageWidth": 1920,
+  "description": ""
+}

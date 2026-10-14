@@ -63,12 +63,14 @@ _META_KEYS = (
     "n_flash", "n_reflect", "candidate_overflow", "lamp_roi", "night_state",
     "night_qualified", "night_gate", "memory_estimate_mb", "warmup",
     "delta", "lag_frames", "period_step", "restored", "reason",
+    "fixed_lamps", "fixed_lamp_hours", "fixed_lamp_thresholds",
 )
 _FINAL_KEYS = ("alignment_status", "day_alignment", "image_mode", "n_cand",
                "n_cand_total", "n_flash", "n_reflect", "candidate_overflow",
                "lamp_roi",
                "night_state", "night_qualified", "memory_estimate_mb", "warmup",
-               "lamp_evidence", "lamp_method")
+               "lamp_evidence", "lamp_method", "fixed_lamps", "fixed_lamp_hours",
+               "fixed_lamp_thresholds")
 
 
 def _auto_day(camera: str) -> Path | None:

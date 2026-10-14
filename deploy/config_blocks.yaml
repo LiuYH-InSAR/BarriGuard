@@ -63,6 +63,12 @@ cameras:
       detect_hz: 2.0
       max_observation_gap_s: 3.0
     night_lamp:
+      lamp_checks:
+        enabled: true
+        polygons: roi_configs/lamps/1749.json
+        heatmap_ratio: 0.10
+        hotspot_strength_min: 0.30
+        lit_hours: 3
       enabled: true
       schedule: night
       status: ready
@@ -150,6 +156,12 @@ cameras:
       detect_hz: 2.0
       max_observation_gap_s: 3.0
     night_lamp:
+      lamp_checks:
+        enabled: true
+        polygons: roi_configs/lamps/1750.json
+        heatmap_ratio: 0.10
+        hotspot_strength_min: 0.30
+        lit_hours: 3
       enabled: true
       schedule: night
       status: calibration_pending

@@ -316,6 +316,9 @@ class NightAdapter:
             R.M_REASON: "no_samples",
         }
         meta[R.M_ADAPTER] = self.stats()
+        checks = getattr(self._session, "_lamp_checks", None)
+        if checks is not None:
+            meta["fixed_lamps"] = checks.unknown(created)
         return R.build_report(self._camera_id, created, None, meta,
                               status=R.STATUS_FAILED,
                               report_type=R.REPORT_TYPE_BURST)

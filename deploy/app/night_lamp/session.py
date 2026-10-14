@@ -535,6 +535,10 @@ class NightSession:
         self._flash_count = None
         self._n_flash_buckets = 0
         self._last_lamp_evidence = []
+        self._lamp_checks = None
+        if spec.lamp_checks.enabled:
+            from night_lamp.lamp_checks import LampChecks
+            self._lamp_checks = LampChecks(spec.lamp_checks)
 
         self._n_seen = 0
         self._first_ts = None
@@ -633,6 +637,7 @@ class NightSession:
             "n_flash_buckets": np.int64(self._n_flash_buckets),
             "evidence_version": np.int64(_EVIDENCE_VERSION),
             "background_version": np.int64(_BACKGROUND_VERSION),
+            "lamp_checks": np.array(self._lamp_checks.dump() if self._lamp_checks else ""),
         }
 
     @_synchronized
@@ -668,6 +673,8 @@ class NightSession:
         self._overflow_any = bool(state["overflow_any"])
         self._restore_gate(state)
         self._restore_evidence(state, base.shape)
+        if self._lamp_checks and str(state.get("lamp_checks", "")):
+            self._lamp_checks.restore(state["lamp_checks"])
         self._restored = True
         return True
 
@@ -1263,7 +1270,8 @@ class NightSession:
         heat = heat * dim[..., None]
         alpha = nm.alpha_of(duty, keep, nm.RENDER_DUTY_LO, nm.BLEND)
         vis = nm.compose(heat, alpha * (dim * gate)[..., None], nm.night_bg(self._bg))
-        nm.draw_rings(vis, rings)
+        if self._lamp_checks is None:
+            nm.draw_rings(vis, rings)
         nm.draw_bar(vis, nm.CMAPS["ice"], "flash duty")
 
         image = vis
@@ -1287,13 +1295,34 @@ class NightSession:
                 dvis = nm.compose(dheat, dalpha,
                                   nm.mute_bg(day_bgr, nm.DAY_BG_SAT,
                                              nm.DAY_BG_DARK))
-                nm.draw_rings(dvis, rings)
+                if self._lamp_checks is None:
+                    nm.draw_rings(dvis, rings)
                 nm.draw_bar(dvis, nm.CMAPS["inferno"], "flash duty")
                 dvis = nm.draw_caption(
                     dvis, "camera %s  duty>=%.2f  delta=%d  p99=%.3f"
                     % (self._camera_id, nm.DAY_LO, nm.ON_DELTA, top))
                 image = dvis
                 image_mode = R.IMAGE_MODE_DAY
+
+        checked_lamps = None
+        if self._lamp_checks:
+            if report_type == R.REPORT_TYPE_BURST:
+                scheduled = max(1, self._spec.overnight.burst_seconds * rate)
+                coverage = min(1.0, self._burst_n / scheduled)
+                usable = night.get("qualified") is not False
+                from night_lamp.lamp_checks import hotspot_region
+                heatmap_region = hotspot_region(
+                    duty, top, keep, dim, gate, self._mask, nm.RENDER_GAMMA,
+                    nm.RENDER_DUTY_LO, self._spec.lamp_checks.hotspot_strength_min)
+                checked_lamps = self._lamp_checks.observe(
+                    heatmap_region, self._mask, coverage, usable, created_at, overflow=overflow)
+            else:
+                checked_lamps = self._lamp_checks.summary()
+                # Morning output shows only the aligned background and lamp states.
+                image = (day_bgr.copy() if image_mode == R.IMAGE_MODE_DAY
+                         else cv.cvtColor(np.clip(self._bg, 0, 255).astype(np.uint8),
+                                          cv.COLOR_GRAY2BGR))
+            self._lamp_checks.draw(image, checked_lamps)
 
         ok, buf = cv.imencode(".jpg", image,
                               [int(cv.IMWRITE_JPEG_QUALITY), R.JPEG_QUALITY])
@@ -1363,6 +1392,16 @@ class NightSession:
             R.M_RESTORED: bool(self._restored),
         }
         meta.update(self._night_meta(night))
+        if checked_lamps is not None:
+            meta["fixed_lamps"] = checked_lamps
+            meta["fixed_lamp_hours"] = self._lamp_checks.history
+            meta["fixed_lamp_thresholds"] = {
+                "heatmap_ratio": self._spec.lamp_checks.heatmap_ratio,
+                "hotspot_strength_min": self._spec.lamp_checks.hotspot_strength_min,
+                "lit_hours": self._spec.lamp_checks.lit_hours,
+                "heatmap_duty_floor": nm.RENDER_DUTY_LO,
+                "denominator": "whole_polygon",
+                "coverage_is_diagnostic_only": True}
         return R.build_report(self._camera_id, created_at, jpeg, meta,
                               status=status, report_type=report_type)
 

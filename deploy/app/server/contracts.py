@@ -192,6 +192,19 @@ class OvernightSpec:
 
 
 @dataclass
+class LampCheckSpec:
+    enabled: bool = False
+    polygons: str = ""
+    min_coverage: float = 0.8
+    min_pixels: int = 2
+    min_flash_ratio: float = 0.01
+    missing_hours: int = 2
+    heatmap_ratio: float = 0.10
+    hotspot_strength_min: float = 0.30
+    lit_hours: int = 3
+
+
+@dataclass
 class NightLampSpec:
     """夜灯：以 nightly_map 为目标算法，整夜在线累积，07:00 finalize。"""
     schedule: str = "night"
@@ -206,6 +219,7 @@ class NightLampSpec:
     pulse: PulseSpec = field(default_factory=PulseSpec)
     alignment: AlignmentSpec = field(default_factory=AlignmentSpec)
     overnight: OvernightSpec = field(default_factory=OvernightSpec)
+    lamp_checks: LampCheckSpec = field(default_factory=LampCheckSpec)
 
 
 @dataclass

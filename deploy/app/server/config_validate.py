@@ -29,6 +29,7 @@ from .contracts import (
     DetectSpec,
     MemorySpec,
     NightLampSpec,
+    LampCheckSpec,
     OvernightSpec,
     PeriodicitySpec,
     PulseSpec,
@@ -86,6 +87,7 @@ NESTED_SPECS = {
     "pulse": PulseSpec,
     "alignment": AlignmentSpec,
     "overnight": OvernightSpec,
+    "lamp_checks": LampCheckSpec,
     "detect": DetectSpec,
     "track": TrackSpec,
 }
@@ -356,6 +358,14 @@ def _build_spec(name, b, schedule, status, where, base_dir):
         kwhere = f"{where}.{key}"
         if key in NESTED_SPECS:
             kwargs[key] = _parse_nested(NESTED_SPECS[key], b[key], kwhere)
+            if key == "lamp_checks" and kwargs[key].enabled:
+                checks = kwargs[key]
+                if not checks.polygons:
+                    raise ConfigError(f"{kwhere}.polygons is required")
+                checks.polygons = resolve_resource(checks.polygons, base_dir, f"{kwhere}.polygons")
+                if not (0 <= checks.heatmap_ratio < 1 and checks.lit_hours >= 1
+                        and 0 < checks.hotspot_strength_min <= 1):
+                    raise ConfigError(f"{kwhere} invalid thresholds")
         elif key == "night_gate":
             kwargs[key] = _parse_night_gate(b[key], kwhere)
         elif key == "lamp_roi":
