@@ -152,6 +152,7 @@ class PeriodicitySpec:
     min_peaks: int = 3
     gap_tol: int = 1
     onset_min: int = 50
+    enabled: bool = True
 
 
 @dataclass
@@ -199,9 +200,9 @@ class LampCheckSpec:
     min_pixels: int = 2
     min_flash_ratio: float = 0.01
     missing_hours: int = 2
-    heatmap_ratio: float = 0.10
-    hotspot_strength_min: float = 0.30
-    lit_hours: int = 3
+    heatmap_ratio: float = 0.05
+    hotspot_strength_min: float = 0.10
+    lit_hours: int = 1
 
 
 @dataclass

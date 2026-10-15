@@ -52,7 +52,9 @@ def analyse_region(bgr, period, lag_lo, lag_hi, times=None, external_mask=None, 
     """Fit Gray states; yellow supports separation, never vetoes other lamps."""
     samples = np.asarray(bgr, np.float64).reshape(-1, 3)
     valid = np.all(np.isfinite(samples), axis=1)
+    check_period = getattr(period, "enabled", True)
     result = {"samples": int(valid.sum()), "flashing": False,
+              "periodicity_enabled": bool(check_period),
               "reason": "insufficient_samples", "yellow_score": 0.0}
     # Trim missing warmup prefix only; never compress internal gaps into time.
     from .stutter import SETTINGS, detect_path
@@ -104,7 +106,11 @@ def analyse_region(bgr, period, lag_lo, lag_hi, times=None, external_mask=None, 
                   bic_gain=round(bic, 3), yellow_score=round(yellow, 3),
                   delta_rgb=[round(float(v), 3) for v in delta[::-1]],
                   duty=round(float(on[clean].mean()), 4))
-    onset,peak,lag,curve,periodic,peaks=periodic_features(on,clean,lag_lo,lag_hi,period)
+    if check_period:
+        onset,peak,lag,curve,periodic,peaks=periodic_features(on,clean,lag_lo,lag_hi,period)
+    else:
+        onset = int(np.count_nonzero(clean & on & np.r_[True, clean[:-1] & ~on[:-1]]))
+        peak, lag, periodic, peaks = 0.0, -1, True, []
     result['onsets']=onset
     if (min(weights) < MIN_STATE_WEIGHT or gap < MIN_STATE_GAP
             or separation < sep_floor or bic < MIN_BIC_GAIN):
@@ -115,7 +121,8 @@ def analyse_region(bgr, period, lag_lo, lag_hi, times=None, external_mask=None, 
         return result
     result.update(flashing=bool(periodic), ac_peak=round(float(peak), 4),
                   ac_lag=int(lag), peak_lags=[int(v) for v in peaks],
-                  reason="periodic" if periodic else "not_periodic")
+                  reason=("periodicity_disabled" if not check_period
+                          else "periodic" if periodic else "not_periodic"))
     return result
 
 

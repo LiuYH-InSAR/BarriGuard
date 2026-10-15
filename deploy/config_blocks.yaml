@@ -66,9 +66,9 @@ cameras:
       lamp_checks:
         enabled: true
         polygons: roi_configs/lamps/1749.json
-        heatmap_ratio: 0.10
-        hotspot_strength_min: 0.30
-        lit_hours: 3
+        heatmap_ratio: 0.05
+        hotspot_strength_min: 0.10
+        lit_hours: 1
       enabled: true
       schedule: night
       status: ready
@@ -90,6 +90,7 @@ cameras:
         warmup_s: 600
         ema_half_life_s: 1800
       periodicity:
+        enabled: false
         period_step: 2
         lag_lo_s: 0.3
         lag_hi_s: 7.0
@@ -159,9 +160,9 @@ cameras:
       lamp_checks:
         enabled: true
         polygons: roi_configs/lamps/1750.json
-        heatmap_ratio: 0.10
-        hotspot_strength_min: 0.30
-        lit_hours: 3
+        heatmap_ratio: 0.05
+        hotspot_strength_min: 0.10
+        lit_hours: 1
       enabled: true
       schedule: night
       status: calibration_pending
@@ -183,6 +184,7 @@ cameras:
         warmup_s: 600
         ema_half_life_s: 1800
       periodicity:
+        enabled: false
         period_step: 2
         lag_lo_s: 0.3
         lag_hi_s: 7.0
