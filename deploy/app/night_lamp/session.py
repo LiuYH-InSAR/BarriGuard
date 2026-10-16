@@ -1277,7 +1277,10 @@ class NightSession:
         image = vis
         image_mode = R.IMAGE_MODE_NIGHT
         day_align = None
-        if base_frame_bgr is None:
+        if report_type == R.REPORT_TYPE:
+            # Final map keeps the existing night background; no daytime overlay.
+            alignment_status = AlignmentStatus.NOT_APPLICABLE
+        elif base_frame_bgr is None:
             alignment_status = AlignmentStatus.BASE_UNAVAILABLE
         else:
             day_bgr, dx, dy, cc = nm.align_day(base_frame_bgr,
