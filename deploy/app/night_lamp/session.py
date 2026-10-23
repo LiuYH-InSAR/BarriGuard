@@ -553,8 +553,18 @@ class NightSession:
         self._lamp_roi_frac = None
 
     def _merge_lamp_roi(self):
-        """灯带 ROI 并入排除掩膜；失败则 fail-open（记错，不杀死本夜）。"""
-        if not self._lamp_roi or self._mask is None:
+        """手动灯圈优先；未启用时沿用旧灯带，始终保留 OSD 排除区域。"""
+        if self._mask is None:
+            return
+        if self._lamp_checks is not None:
+            if self._lamp_checks.size != (self._h, self._w):
+                raise ValueError("Lamp label image dimensions differ from stream")
+            roi = np.zeros((self._h, self._w), np.uint8)
+            cv.fillPoly(roi, list(self._lamp_checks.polys.values()), 1)
+            self._mask = self._mask | (roi == 0)
+            self._lamp_roi_frac = round(float(roi.mean()), 4)
+            return
+        if not self._lamp_roi:
             return
         try:
             roi = nm.lamp_roi_mask(
@@ -1360,7 +1370,9 @@ class NightSession:
             R.M_FLASH_BUCKET_COUNT: int(self._n_flash_buckets),
             R.M_CALIBRATION_STATUS: getattr(self._spec.status, "value",
                                             self._spec.status),
-            R.M_LAMP_ROI: {"enabled": bool(self._lamp_roi),
+            R.M_LAMP_ROI: {"enabled": bool(self._lamp_checks or self._lamp_roi),
+                           "source": ("fixed_lamps" if self._lamp_checks is not None
+                                      else "water_barrier" if self._lamp_roi else "none"),
                            "frac": self._lamp_roi_frac},
             R.M_ONLINE: {
                 "n_tracked_points": int(self._series.n_points),
