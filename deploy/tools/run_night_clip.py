@@ -114,6 +114,8 @@ def run(args) -> dict:
     cfg = config.load_runtime(Path(args.config) if args.config else None)
     cam = next(c for c in cfg.cameras if c.id == args.camera)
     spec = cam.algorithms["night_lamp"].spec
+    if args.periodicity is not None:
+        spec.periodicity.enabled = args.periodicity
 
     # 参数覆盖（用于对照实验 / 找优化组合）
     if args.continuous:
@@ -362,8 +364,10 @@ def main():
     ap.add_argument("--max-frames", type=int, default=0)
     ap.add_argument("--continuous", action="store_true",
                     help="关闭 overnight burst，整段连续累计（省 CPU 前请权衡内存）")
+    ap.add_argument("--periodicity", action=argparse.BooleanOptionalAction, default=None,
+                    help="Enable/disable periodicity filtering; keep state and onset checks")
     ap.add_argument("--save-intermediate", action=argparse.BooleanOptionalAction,
-                    default=True, help="Save ROI Gray matrix, tracked gray/state matrices and curves (default: enabled)")
+                    default=False, help="Save ROI Gray matrix, tracked gray/state matrices and curves (default: disabled)")
     ap.add_argument("--interval-ms", type=int, default=0)
     ap.add_argument("--burst-seconds", type=int, default=0)
     ap.add_argument("--cadence-minutes", type=int, default=0)

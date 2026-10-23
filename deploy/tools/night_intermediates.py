@@ -18,6 +18,52 @@ PLOT_HEIGHT = 1340
 SELECTED_PLOTS = "selected_gray_plots"
 
 
+def _lamp_ids(checks, item):
+    if checks is None:
+        return None
+    point = (float(item["x"]), float(item["y"]))
+    return [name for name, poly in checks.polys.items()
+            if cv.pointPolygonTest(poly, point, False) >= 0]
+
+
+def write_plot_index(out_dir):
+    """Browse the original SVG plots and evidence; never rerun detection."""
+    out = Path(out_dir)
+    manifests = ([out / "manifest.json"] if (out / "manifest.json").exists()
+                 else sorted(out.rglob("manifest.json")))
+    rows = []
+    first_plot = ""
+    for path in manifests:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for item in data.get("candidates", []):
+            candidate = item["candidate_id"]
+            plot = path.parent / f"candidate_{candidate:03d}.svg"
+            if not plot.exists():
+                continue
+            relative = plot.relative_to(out).as_posix()
+            first_plot = first_plot or relative
+            lamps = ','.join(item.get('lamp_ids', []))
+            title = f"{path.parent.parent.name} / {lamps} / {candidate:03d} / ({item.get('x')}, {item.get('y')})"
+            reason = str(item.get("reason", ""))
+            rows.append(f'<tr><td><a target="plot" href="{html.escape(relative, quote=True)}">'
+                        f'{html.escape(title)}</a></td><td>{html.escape(reason)}</td>'
+                        f'<td>{item.get("flashing", False)}</td></tr>')
+    page = ('<!doctype html><meta charset="utf-8"><title>Night diagnostic plots</title>'
+            '<style>body{font:14px sans-serif;margin:15px}.layout{display:flex;gap:15px}'
+            '.list{width:35%;height:88vh;overflow:auto}table{border-collapse:collapse}'
+            'td,th{padding:6px;border:1px solid #ccc}iframe{width:65%;height:88vh}'
+            'input{width:90%;padding:8px}</style><h2>候选位置诊断曲线</h2>'
+            '<p>点击左侧候选，在右侧查看原始plot；包含未通过项。曲线过宽时可横向滚动。</p>'
+            '<div class="layout"><div class="list"><input placeholder="搜索小时、坐标或失败原因" '
+            'oninput="for(const r of document.querySelectorAll(\'tbody tr\'))'
+            'r.hidden=!r.textContent.toLowerCase().includes(this.value.toLowerCase())">'
+            '<table><thead><tr><th>小时／编号／坐标</th><th>原因</th><th>通过</th></tr>'
+            '</thead><tbody>' + ''.join(rows) + '</tbody></table></div>'
+            f'<iframe name="plot" src="{html.escape(first_plot, quote=True)}"></iframe></div>')
+    (out / "index.html").write_text(page, encoding="utf-8")
+    return len(rows)
+
+
 def replot_saved(out_dir):
     """Regenerate four-panel Gray plots without replaying already-saved sequences."""
     out = Path(out_dir)
@@ -209,9 +255,14 @@ def save_intermediates(session, report, out_dir):
     if report and report.image_jpeg:
         position_image = cv.imdecode(np.frombuffer(report.image_jpeg, np.uint8), cv.IMREAD_COLOR)
     for candidate, item in enumerate(evidence):
+        lamps = _lamp_ids(getattr(session, "_lamp_checks", None), item)
+        if lamps == []:
+            continue
         row = item.get("series_row")
         name = f"candidate_{candidate:03d}"
         info = {"candidate_id": candidate, **item}
+        if lamps is not None:
+            info["lamp_ids"] = lamps
         mapping.append(info)
         if position_image is not None:
             x, y = int(item["x"]), int(item["y"])
@@ -252,4 +303,5 @@ def save_intermediates(session, report, out_dir):
                 "shapes": {k: list(v.shape) for k, v in arrays.items()},
                 "candidates": mapping}
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_plot_index(out)
     return str(out)

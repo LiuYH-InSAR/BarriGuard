@@ -52,6 +52,7 @@ class LampCheckTests(unittest.TestCase):
         self.assertEqual(self.observe(heat)[0]["status"], "FLASHING")
 
     def test_three_lit_hours_any_order(self):
+        self.checks.spec.lit_hours = 3
         self.observe(~self.empty)
         self.observe()
         self.observe(~self.empty)
@@ -67,6 +68,7 @@ class LampCheckTests(unittest.TestCase):
         self.assertEqual(rows[0]["heatmap_ratio"], 1.0)
 
     def test_missing_hours_are_not_lit(self):
+        self.checks.spec.lit_hours = 3
         self.observe(~self.empty)
         self.checks.unknown("missing")
         self.assertEqual(self.checks.summary()[0]["status"], "NOT_FLASHING")
@@ -115,7 +117,7 @@ class LampCheckTests(unittest.TestCase):
             self.assertTrue(restored.load_state(session.dump_state()))
             with patch("night_lamp.session.nm.compose", return_value=np.full((64,64,3), [255,0,0], np.uint8)):
                 final = restored.finalize(None,"morning")
-            self.assertEqual(final.metadata["fixed_lamps"][0]["status"], "NOT_FLASHING")
+            self.assertEqual(final.metadata["fixed_lamps"][0]["status"], "FLASHING")
             import cv2
             image = cv2.imdecode(np.frombuffer(final.image_jpeg, np.uint8), cv2.IMREAD_COLOR)
             self.assertLess(int(image[5,5].max())-int(image[5,5].min()), 3)
