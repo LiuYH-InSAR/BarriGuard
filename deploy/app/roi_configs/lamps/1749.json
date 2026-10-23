@@ -319,7 +319,7 @@
       "kie_linking": []
     },
     {
-      "label": "lamp15",
+      "label": "lamp16",
       "score": null,
       "points": [
         [
@@ -340,7 +340,7 @@
       "kie_linking": []
     },
     {
-      "label": "lamp16",
+      "label": "lamp17",
       "score": null,
       "points": [
         [
@@ -364,5 +364,6 @@
   "imagePath": "1749_label_20261023_093656_002305.png",
   "imageData": null,
   "imageHeight": 1080,
-  "imageWidth": 1920
+  "imageWidth": 1920,
+  "description": ""
 }
