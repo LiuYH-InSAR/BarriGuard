@@ -1,0 +1,11 @@
+{
+  "model": "YOLO11s V6",
+  "file": "best.pt",
+  "sha256": "39d5ccd1efd323a05a98258c37db86fc36d2414dc00a2f23238f1c720aa46858",
+  "bytes": 19239962,
+  "classes": {
+    "0": "water_barrier"
+  },
+  "status": "selected_runtime_model",
+  "training_required": false
+}

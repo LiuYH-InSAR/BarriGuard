@@ -1,15 +1,16 @@
+# 服务器更新入口
 
+完整步骤见仓库根[部署说明](../SERVER_DEPLOYMENT.md)。
 
-账号名是new AI demo
-密码是esggesg2026
-我們那兩個攝像頭（包括AI功能）只能這個賬號看到
+服务器在仓库根`git pull --ff-only`后进入本目录：
 
+```bash
+docker compose build --pull barriguard
+docker compose run --rm --no-deps barriguard python -B check_deploy.py --load-model
+docker compose up -d --no-build barriguard
+docker compose ps
+```
 
-现在需要做的事情：
-容器化部署。
+检查成功再替换容器。使用`.env`选择`config.local.yaml`，避免Git更新覆盖服务器私有配置。初次测试从`config.test.yaml`复制，callback关闭。
 
-白天，在光照条件好的情况下，执行水马缺口检测。早上七点到晚上五点。每一小时采集一张图片，进行检测，并向某一个回调接口发出报警。
-
-晚上入夜后，启动夜间灯光闪烁检测。积累一个晚上的观测数据，早上七点向平台推送叠加了白天底图的夜间检测热力图用于分析是否有灯光闪烁异常。晚上八点开始到凌晨三点。灯光闪烁采集需要思考如何做。
-
-注意这些上述的决策数据不可以落盘！这些东西都是采用类似于实时分析的策略。
+保留原FFmpeg、灯光算法和数据挂载；新增YOLO依赖、V6模型和水马结果持久化。默认CPU。本机尚未实测Docker构建，首次服务器构建需验证依赖下载与性能。

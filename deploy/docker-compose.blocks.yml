@@ -1,6 +1,6 @@
+# Compatibility with the old server command using this override filename.
+# The active water backend is YOLO; no config_blocks.yaml is loaded.
 services:
   barriguard:
     environment:
-      BARRIGUARD_CONFIG: /app/config_blocks.yaml
-    volumes:
-      - ./config_blocks.yaml:/app/config_blocks.yaml:ro
+      BARRIGUARD_CONFIG: /app/deploy/config.yaml

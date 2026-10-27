@@ -1,0 +1,558 @@
+{
+  "format_version": 1,
+  "distribution": "git-checkout",
+  "model": "V6",
+  "model_path": "models/water_barrier_v6/best.pt",
+  "files": [
+    {
+      "path": ".dockerignore",
+      "bytes": 200,
+      "hash_mode": "text_lf",
+      "sha256": "bbff7f200c76a2cdbd8102a3598d9081a34f66324bd1d9aa972532f0413e432d",
+      "configurable": false
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 175,
+      "hash_mode": "text_lf",
+      "sha256": "b58d9afa182740257d57059d4548432a22f0daaec05b6b62efd082c9cb30f125",
+      "configurable": false
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 478,
+      "hash_mode": "text_lf",
+      "sha256": "be75c67f858dad1bc80dab03bc28fadbb9e42eab5880e5bfa653350b78bb15ab",
+      "configurable": false
+    },
+    {
+      "path": ".python-version",
+      "bytes": 6,
+      "hash_mode": "text_lf",
+      "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "configurable": false
+    },
+    {
+      "path": "check_deploy.py",
+      "bytes": 4653,
+      "hash_mode": "text_lf",
+      "sha256": "6c1ddd3f1fadf677cec5de395caee9acab78866c5e531198387ab4bf9c76a2da",
+      "configurable": false
+    },
+    {
+      "path": "deploy/.env.example",
+      "bytes": 183,
+      "hash_mode": "text_lf",
+      "sha256": "0c559b74e15ade60ce65436c1cb354903fa9909d553925fe6de948373ab0c948",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/__init__.py",
+      "bytes": 107,
+      "hash_mode": "text_lf",
+      "sha256": "f96e35c93e1694cd332494f60fdedb7cc34d085c39fc85d01f39ca57d0c46ff1",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/adapter.py",
+      "bytes": 17495,
+      "hash_mode": "text_lf",
+      "sha256": "5b48fc643c2f34ce06cf0d6d5209eb3b08a887f528a400bd1a3c5c452ad3b8dc",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/disturbance.py",
+      "bytes": 5852,
+      "hash_mode": "text_lf",
+      "sha256": "6bab22f2cb0a1807b303c67140f87a7f4a9bc391999745cd084fecd93221b385",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/evidence.py",
+      "bytes": 7074,
+      "hash_mode": "text_lf",
+      "sha256": "519219f2b938e2127a1ebc0d5a0328f71dbc9025462d736b16a34c1d84b892fd",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/lamp_checks.py",
+      "bytes": 5181,
+      "hash_mode": "text_lf",
+      "sha256": "216ea8d503d56d15fe16893c09369ff4246cfba660768568c49387d65977792b",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/local_recording.py",
+      "bytes": 5537,
+      "hash_mode": "text_lf",
+      "sha256": "9701dfd5e5eeb5f34c5adf0f7e655c22305939f4db6dbed0e9652c7559422b18",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/periodicity.py",
+      "bytes": 3138,
+      "hash_mode": "text_lf",
+      "sha256": "d7300fc36a45a71a4598b83aad507d9eb963577741164037ed527555b60ac095",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/persist.py",
+      "bytes": 5338,
+      "hash_mode": "text_lf",
+      "sha256": "79ce95f21a6d8454e6cb2c94984fb814f6563be32c03c8b190524e42acd27c4d",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/publish_night.py",
+      "bytes": 4709,
+      "hash_mode": "text_lf",
+      "sha256": "950c3af9882c1a73571741f6b3ca1c6e33973c8ffd52f5c4e309a7ccf9124596",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/pulse.py",
+      "bytes": 4009,
+      "hash_mode": "text_lf",
+      "sha256": "2276d0edaff177f923393c7a182ad73878443fc4be35efc10b8196641153621d",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/replay_night.py",
+      "bytes": 6567,
+      "hash_mode": "text_lf",
+      "sha256": "7dbc771d3b9a37afcc08900d47f23466bfca7165b2398ffdc22ec3c945ebc9d2",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/report.py",
+      "bytes": 3490,
+      "hash_mode": "text_lf",
+      "sha256": "08f05b1619249b18791411ec288c4903f902ff0fa241553513107b5026bdcebd",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/session.py",
+      "bytes": 64939,
+      "hash_mode": "text_lf",
+      "sha256": "a5d5d4a08c00892b73ef3e8f67e3df81561f90b54957955a96bd5eef788de66b",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/single_pixel.py",
+      "bytes": 2017,
+      "hash_mode": "text_lf",
+      "sha256": "12776630fd074334b14cb845442d0492b99b957ae37839abb6120ad6eb8ec0fa",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/stutter.py",
+      "bytes": 3810,
+      "hash_mode": "text_lf",
+      "sha256": "d578e291e33b22afa86bee928dfab8857b7cf2805f1b54d4edb4b46b2c1015bc",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/tools/__init__.py",
+      "bytes": 0,
+      "hash_mode": "text_lf",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/night_lamp/tools/nightly_map.py",
+      "bytes": 28233,
+      "hash_mode": "text_lf",
+      "sha256": "7769c55cf6aab9892202ae35de853d4301aef8457080f20bbf0715856cf97f19",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/roi_configs/1749.yaml",
+      "bytes": 4980,
+      "hash_mode": "text_lf",
+      "sha256": "29fa4cb208036230c5fd007783db038b730972421a89a5647433ecbb18b275a6",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/roi_configs/1750.yaml",
+      "bytes": 1995,
+      "hash_mode": "text_lf",
+      "sha256": "92e32c38a34a55d11f7ef7dacc9488f71f685e38579a90fc4b5beb54c02db3a1",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/roi_configs/lamps/1749.json",
+      "bytes": 7638,
+      "hash_mode": "text_lf",
+      "sha256": "916d3a140a8669d61e34e13de4fcc132075883b946bd85e145a95f75cb6daa35",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/roi_configs/lamps/1750.json",
+      "bytes": 4472,
+      "hash_mode": "text_lf",
+      "sha256": "82e1283c7f08b6ad98e0bb867211001bff713afe5ca0b8e4fda179bb2ab0457d",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/__init__.py",
+      "bytes": 262,
+      "hash_mode": "text_lf",
+      "sha256": "21ec103e30711a717f38fd0e960db381c7dfaf363a30b30ea1e905430839dfc8",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/__main__.py",
+      "bytes": 4441,
+      "hash_mode": "text_lf",
+      "sha256": "059e215b2e4def47eacdb691abc64130ec20b2c6ac3173251ae07d31bbded012",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/agents/__init__.py",
+      "bytes": 218,
+      "hash_mode": "text_lf",
+      "sha256": "40a0c0ed1c86e1c8d9cbcf203b5d6a38f1ce7ac827f8330f346add3df7c7c372",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/agents/day.py",
+      "bytes": 2631,
+      "hash_mode": "text_lf",
+      "sha256": "fa2de484c87f4e198f58c11dead5f910e5ce0ff978dca3393cdc8b754c71a0c7",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/alarms.py",
+      "bytes": 2330,
+      "hash_mode": "text_lf",
+      "sha256": "ce427c9449de17489c0aec337494ebbdd6187bcc3ef34ecab1d71c590ac58663",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/algo.py",
+      "bytes": 2503,
+      "hash_mode": "text_lf",
+      "sha256": "93a52e27c54967f9ea5365c202dc99a4beb45369fce59634e1625ae0d1390544",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/app.py",
+      "bytes": 4893,
+      "hash_mode": "text_lf",
+      "sha256": "aaf75233ee481f38a06639c6bad4115392c463c4749976bf946f44497b190043",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/config.py",
+      "bytes": 2189,
+      "hash_mode": "text_lf",
+      "sha256": "b4c961152e28fa3417c6dece7e2c39b3cb5ad741947853713178cd59f8640bfc",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/config_validate.py",
+      "bytes": 21748,
+      "hash_mode": "text_lf",
+      "sha256": "27bc38e541c87c74c086b02c290afcf57e270007c725bf5bc170e337196d38d2",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/contracts.py",
+      "bytes": 9304,
+      "hash_mode": "text_lf",
+      "sha256": "0030f28bedbf092e4a4fdf29c34b52d6bd7f8c50bd541be4a0f51e5f58ce825c",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/logging_setup.py",
+      "bytes": 2620,
+      "hash_mode": "text_lf",
+      "sha256": "78511a6375ba9f70907de3fbdbb2c0e5f130b40c3e4c2da9bcac7dc9ed0fe361",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/maintenance.py",
+      "bytes": 2774,
+      "hash_mode": "text_lf",
+      "sha256": "c00625539c30894af6e3fac10ba1b46480c9c8ecadcfa4a0a80cbc7b0fa8e81f",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/output.py",
+      "bytes": 2447,
+      "hash_mode": "text_lf",
+      "sha256": "989b8e7cf5fe1a152e08ea3afb3ea8e8f1a0d6b17168c7bedceb4224f6c3be3f",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/registry.py",
+      "bytes": 1507,
+      "hash_mode": "text_lf",
+      "sha256": "ce564abd43cdcd8f3229a11e938f9b55d8ab46160a9f107ed1c95615a762f653",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/render.py",
+      "bytes": 2226,
+      "hash_mode": "text_lf",
+      "sha256": "9d24b64575625369e628f05e79705edfde8d38b20930ed40c608183e315b43d4",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/reporting.py",
+      "bytes": 14974,
+      "hash_mode": "text_lf",
+      "sha256": "aa4d02b3eb9a3e8fad6a32aa9114bc9917591ac44a8df56855ffd362ed9a1721",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/schedule.py",
+      "bytes": 13792,
+      "hash_mode": "text_lf",
+      "sha256": "c61ac3e63e1f9e3505d89598716ad24c889ab866877fcd8e33894a871d60fbd2",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/source.py",
+      "bytes": 12264,
+      "hash_mode": "text_lf",
+      "sha256": "c99d94ceda94471d9892eeb43340c7af8e41aae711ca5efe3577cf8182d56987",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/server/worker.py",
+      "bytes": 29784,
+      "hash_mode": "text_lf",
+      "sha256": "775f05cc2819cf708c574ed78c2fc8a83f8c87f12e1d2add1369ddfb34bbfe04",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/__init__.py",
+      "bytes": 825,
+      "hash_mode": "text_lf",
+      "sha256": "a56a620037804e269422996f64b7149707b93e970d3965727b9d06988fb359df",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/online_blocks.py",
+      "bytes": 6999,
+      "hash_mode": "text_lf",
+      "sha256": "5437f65840e9e37903fb10991f0703f44b8f4268a809d4c88bc25777bf03f33d",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/pipeline.py",
+      "bytes": 11566,
+      "hash_mode": "text_lf",
+      "sha256": "6762b20890c843f6476b2c28fbf860464506a4830642b558ab57efbcb51d9077",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/signal.py",
+      "bytes": 17024,
+      "hash_mode": "text_lf",
+      "sha256": "8b508925c73595c9aad961e0698380e2bd27432f092c3d21c17a2b320f5993bc",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/track.py",
+      "bytes": 9624,
+      "hash_mode": "text_lf",
+      "sha256": "0b32ab1586124765a058acbfe0df295c83506d1543c58d41b5462dcc9688aa04",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_camera.py",
+      "bytes": 3897,
+      "hash_mode": "text_lf",
+      "sha256": "447cdc3fc7985b34cbcacb205fb7a936a754ce7ced548914f8b52ce7ee090bd2",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_debug.py",
+      "bytes": 2220,
+      "hash_mode": "text_lf",
+      "sha256": "e23ea5b051b3774252714c6a5698ddf46895b34e412cf56fca24229463c1a730",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_detector.py",
+      "bytes": 3088,
+      "hash_mode": "text_lf",
+      "sha256": "d42a549961ac16a4e4eb5ef4bf3c34816fc4e1139a0ef349badd2d4beabcf065",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_geometry.py",
+      "bytes": 6871,
+      "hash_mode": "text_lf",
+      "sha256": "c56be75cf244b488418666c4185360972e0c57ae5b3bcdfc0cee58eceb75e706",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_history.py",
+      "bytes": 4170,
+      "hash_mode": "text_lf",
+      "sha256": "a74f9e6b016bf3949feff77e30e33239ac84fc61245bc6527d0484d63f534a27",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_params.py",
+      "bytes": 24769,
+      "hash_mode": "text_lf",
+      "sha256": "4e2809e7cc768da61347a67e10fd3a28a1f01642e5357c4af7a030f7e2f44364",
+      "configurable": true
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_pipeline.py",
+      "bytes": 30502,
+      "hash_mode": "text_lf",
+      "sha256": "a219f3e5b8428030a646aa3dddfe890fcd3782a13eb409ef8e139945cfddf6b0",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_policy.py",
+      "bytes": 5180,
+      "hash_mode": "text_lf",
+      "sha256": "e4add6599854e124ab5b90ae7c583129a886aa0016a7cace7aa7a49bf7a93429",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_reference.py",
+      "bytes": 8183,
+      "hash_mode": "text_lf",
+      "sha256": "646e3d8935b3463201b853123b88017a8aac59c1f8696ea2e78c1f075190c674",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_store.py",
+      "bytes": 3932,
+      "hash_mode": "text_lf",
+      "sha256": "7ccfee61d3cca88a81d63a46f86996fad407d40e3ad5c450ad8a428a3ab3e7d4",
+      "configurable": false
+    },
+    {
+      "path": "deploy/app/water_barrier/yolo_vision.py",
+      "bytes": 13389,
+      "hash_mode": "text_lf",
+      "sha256": "098b39d240c7e562c14efc6422682d59f9ca8693885bab44c1a0cb0260ca78df",
+      "configurable": false
+    },
+    {
+      "path": "deploy/config.test.yaml",
+      "bytes": 3855,
+      "hash_mode": "text_lf",
+      "sha256": "894fb5563cb349893d7796b1c4e11d26c5ce007f8819ada9dd2d4275ac556186",
+      "configurable": true
+    },
+    {
+      "path": "deploy/config.yaml",
+      "bytes": 5962,
+      "hash_mode": "text_lf",
+      "sha256": "ac2c9ab4481570daaaf37ca75f7f886dffc024db419a0baac8ba6a95b90ce54a",
+      "configurable": true
+    },
+    {
+      "path": "deploy/docker-compose.blocks.yml",
+      "bytes": 233,
+      "hash_mode": "text_lf",
+      "sha256": "3e4fc31978518216ebba608808b99cd3b99756def63b091ab1122999dcf7b2e1",
+      "configurable": false
+    },
+    {
+      "path": "deploy/docker-compose.yml",
+      "bytes": 809,
+      "hash_mode": "text_lf",
+      "sha256": "17c9dba72bb7689f7f1f857cac68665c0f4e437d0871dbc14a1dc9af6d7cc30a",
+      "configurable": false
+    },
+    {
+      "path": "deploy/Dockerfile",
+      "bytes": 1938,
+      "hash_mode": "text_lf",
+      "sha256": "762f2ab002d92883ee41a91d820972f266908bb22d5766b732b9a5fd498700da",
+      "configurable": false
+    },
+    {
+      "path": "deploy/README.md",
+      "bytes": 732,
+      "hash_mode": "text_lf",
+      "sha256": "5031e5cb1a0164bd92fc563f5730fb7643caaa41783b4a4609d475731787a9a6",
+      "configurable": false
+    },
+    {
+      "path": "deploy/requirements-server.txt",
+      "bytes": 353,
+      "hash_mode": "text_lf",
+      "sha256": "b9ed547dd233d8f3330a2685bdf81bfbb37461b5fe6ea57116ac393acf2c5234",
+      "configurable": false
+    },
+    {
+      "path": "models/water_barrier_v6/best.pt",
+      "bytes": 19239962,
+      "hash_mode": "binary",
+      "sha256": "39d5ccd1efd323a05a98258c37db86fc36d2414dc00a2f23238f1c720aa46858",
+      "configurable": false
+    },
+    {
+      "path": "models/water_barrier_v6/model_info.json",
+      "bytes": 272,
+      "hash_mode": "text_lf",
+      "sha256": "c5fb264190f19c2dc7d66d1d268aa772ad66f2320df1109097a644aceb98e335",
+      "configurable": false
+    },
+    {
+      "path": "NOT_UPLOAD_INDEX.md",
+      "bytes": 2013,
+      "hash_mode": "text_lf",
+      "sha256": "23270a4d16729628dbef3ee4d6880c8a8a2d6840d96d746a082afe08c77d9844",
+      "configurable": false
+    },
+    {
+      "path": "pyproject.toml",
+      "bytes": 765,
+      "hash_mode": "text_lf",
+      "sha256": "2f64f3174dc5c68e167a9b70f76083c1828c2ea019ebeb06bd19af1a85e7c4fb",
+      "configurable": false
+    },
+    {
+      "path": "README.md",
+      "bytes": 1257,
+      "hash_mode": "text_lf",
+      "sha256": "67e0308104d917ff1276d4753f2365f3c1a04f7cc7cd5817b37b15fb708be084",
+      "configurable": false
+    },
+    {
+      "path": "SERVER_DEPLOYMENT.md",
+      "bytes": 4789,
+      "hash_mode": "text_lf",
+      "sha256": "3759865daf738c8d0757a5fa487b34c440dc2e01f3dadb832a816b023cfd8412",
+      "configurable": false
+    },
+    {
+      "path": "UPLOAD_INDEX.md",
+      "bytes": 1763,
+      "hash_mode": "text_lf",
+      "sha256": "87a6aeb164cd85cc3d853236404d4f2306dba3c2307c410af500d916508bc851",
+      "configurable": false
+    },
+    {
+      "path": "uv.lock",
+      "bytes": 316773,
+      "hash_mode": "text_lf",
+      "sha256": "f2b1fbe626ab2cc66e740a294d4dcf3c69385aa5685375f93259fe9f00624807",
+      "configurable": false
+    }
+  ],
+  "excluded": [
+    "tmp/",
+    "output/",
+    "data/",
+    "training/",
+    ".venv/",
+    "deploy/.env",
+    "deploy/config.local.yaml"
+  ],
+  "hash_note": "Text SHA256 normalizes CRLF to LF for Git cross-platform checkout; model hashes are byte-exact",
+  "docker_build_tested": false
+}

@@ -1,27 +1,23 @@
-# BarriGuard 部署编排。
-# 构建上下文 = 本目录（deploy/），自包含：app/ 内即三个生产包。
-# 直接 docker compose up --build 即可。
+# Run from deploy/, or use -f deploy/docker-compose.yml from the repository root.
+# Keep the existing project/service/container identity for in-place server updates.
 name: barri-guard
-
 services:
   barriguard:
     build:
-      context: .
-      dockerfile: Dockerfile
-    image: barriguard:latest
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: barriguard:yolo-v6
     container_name: barriguard
     environment:
-      - TZ=Asia/Shanghai
-      # 生产配置（唯一运行期配置）
-      - BARRIGUARD_CONFIG=${BARRIGUARD_CONFIG:-/app/config.yaml}
+      TZ: Asia/Shanghai
+      BARRIGUARD_CONFIG: /app/deploy/config.yaml
+    ports:
+      - "${BARRIGUARD_HTTP_PORT:-8000}:8000"
     volumes:
-      # 运行期配置覆盖镜像内兜底 config.yaml，路径与 env 一致。
-      # server/config.py 优先读 BARRIGUARD_CONFIG，回落到 ROOT/config.yaml。
-      - ./config.yaml:/app/config.yaml:ro
-      # 结果落盘：host 仓库根 data/ 可直接检查（restart 不丢已有文件）。
+      - ${BARRIGUARD_CONFIG_FILE:-./config.yaml}:/app/deploy/config.yaml:ro
       - ../data:/app/data
-      # 本地文件源（可选）；生产走 RTSP 时此挂载不生效。
-      - ../tmp:/app/tmp:ro
-    cpus: "2"
-    mem_limit: 4g
+      - ../output/water_yolo:/app/output/water_yolo
+      - ../output/model_settings:/app/output/model_settings
+    cpus: "${BARRIGUARD_CPUS:-2}"
+    mem_limit: ${BARRIGUARD_MEMORY:-4g}
     restart: unless-stopped

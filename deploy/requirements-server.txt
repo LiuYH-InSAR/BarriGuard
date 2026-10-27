@@ -1,0 +1,14 @@
+# Direct runtime versions used for the V6/local validation environment.
+# Docker installs the CPU torch wheels first; +cpu satisfies these version pins.
+fastapi==0.141.1
+uvicorn==0.52.4
+loguru==0.7.3
+numpy==2.5.3
+opencv-python==5.0.0.93
+scipy==1.18.1
+simplejpeg==1.9.0
+PyYAML==6.0.3
+torch==2.14.0
+torchvision==0.29.0
+ultralytics==8.4.138
+tzdata==2026.5

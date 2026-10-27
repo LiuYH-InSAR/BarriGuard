@@ -1,34 +1,32 @@
-# Python-generated files
+# Local development and generated runtime data never go to GitHub.
+/tmp/
+/training/
+/output/
+/data/
+/evidence/
+/logs/
+/Ultralytics/
 __pycache__/
-*.py[oc]
+*.py[cod]
+.venv*/
+*.egg-info/
 build/
 dist/
-wheels/
-*.egg-info
+.env
+.env.*
+!.env.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+deploy/config.local.yaml
 
-# Virtual environments
-.venv
-tmp
-
-dataset
-*.tar.gz
+# Only the selected runtime model is versioned; no other training weights.
 *.pt
+*.onnx
+*.engine
+!models/water_barrier_v6/best.pt
 
-data
-results
-segment
-
-img
-out
-*.pdf
-
-output
-evidence/
-logs/
-
-out_full
-out_pilot
-out_full50
-
-outputs
-.venv-official
+# No archive-based release workflow.
+*.zip
+*.tar.gz
+*.tar.xz

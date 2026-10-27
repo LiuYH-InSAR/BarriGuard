@@ -140,17 +140,21 @@ class Reporter:
             return
         if getattr(event, "kind", None) != "alarm":
             return
+        yolo_event = (getattr(event, "algo", "") == "water_gap"
+                      and (getattr(event, "payload", None) or {}).get("backend") == "yolo")
         key = (getattr(event, "camera_id", ""), getattr(event, "algo", ""),
                _target(event))
         interval = self._alarm_interval.get((key[0], key[1]),
                                             _DEFAULT_ALARM_MIN_INTERVAL_S)
+        if yolo_event:
+            interval = 0.0  # YOLO 后端已持久化执行逐区域24小时去重。
         now = time.monotonic()
         episode = (getattr(event,"payload",None) or {}).get("episode_id")
         with self._lock:
             new_episode = episode is not None and self._episodes.get(key) != episode
             if not new_episode and now - self._last.get(key, 0.0) < interval:
                 return
-        saved = self._persist_alarm(event, image_jpeg)
+        saved = event.evidence_path if yolo_event and event.evidence_path else self._persist_alarm(event, image_jpeg)
         if saved:
             event.evidence_path = saved
         with self._lock:

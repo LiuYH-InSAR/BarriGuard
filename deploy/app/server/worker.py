@@ -79,6 +79,18 @@ def _default_sweeper(cfg):
     return Sweeper(roots, hours)
 
 
+def _yolo_sweeper(cfg):
+    """YOLO私有资产按自身保留期清理，不能套用旧服务的48小时策略。"""
+    from .maintenance import Sweeper
+    enabled = any(getattr(binding.spec, "backend", "") == "yolo"
+                  for cam in cfg.cameras for binding in cam.algorithms.values())
+    if not enabled:
+        return Sweeper((), 0)
+    from water_barrier.yolo_params import PARAMS
+    return Sweeper((PARAMS.storage.root,), PARAMS.storage.retention_s / 3600,
+                   interval_s=PARAMS.storage.cleanup_s)
+
+
 def _default_night_store(cfg):
     """夜间累计快照目录；output_dir 为空则不启用续跑。"""
     out = str(getattr(cfg, "output_dir", "") or "").strip()
@@ -133,6 +145,8 @@ def _apply_water_params(calib, spec):
 
 def _load_calibration(name, spec):
     """spec.calibration 是（绝对）路径；也可能是已加载内容（dict），两者都兼容。"""
+    if name == "water_gap" and getattr(spec, "backend", "legacy") == "yolo":
+        return {"backend": "yolo"}  # YOLO 自动参照，不读取旧 poly 标定。
     if name == "water_gap" and getattr(spec,"backend","legacy") == "blocks":
         from water_barrier.online_blocks import load_config
         return load_config(spec)
@@ -466,6 +480,8 @@ class CameraWorker:
         for name, runner in list(self._day_runners.items()):
             binding = (getattr(self._camera, "algorithms", None) or {}).get(name)
             spec = getattr(binding, "spec", None)
+            if getattr(spec, "backend", "") == "yolo":
+                continue  # YOLO已即时发送去重报警，整点不能再重复推送。
             if not getattr(spec, "report_interval_s", None):
                 continue
             if not self._scheduler.is_active(self.id, name):
@@ -518,7 +534,9 @@ class CameraWorker:
             annots, debug, events = [], {}, []
             status = "OK"
             for name, runner in list(self._day_runners.items()):
-                if not self._scheduler.is_active(self.id, name):
+                continuous_water = (name == 'water_gap' and
+                    getattr(getattr(runner,'spec',None),'backend',None) == 'yolo')
+                if not continuous_water and not self._scheduler.is_active(self.id, name):
                     continue
                 try:
                     res = runner.on_frame(frame, now_mono)
@@ -608,6 +626,7 @@ class Runtime:
         self.night_store = _default_night_store(cfg)
         self.night_archive = _default_night_archive(cfg)
         self.sweeper = _default_sweeper(cfg)
+        self._water_sweeper = _yolo_sweeper(cfg)
         self.workers = {}
         for cam in cfg.cameras or []:
             if not getattr(cam, "enabled", True):
@@ -625,6 +644,7 @@ class Runtime:
         for w in self.workers.values():
             w.start()
         self.sweeper.start()
+        self._water_sweeper.start()
         self._thread = threading.Thread(target=self._pump, daemon=True,
                                         name="runtime-pump")
         self._thread.start()
@@ -633,6 +653,7 @@ class Runtime:
     def stop(self):
         self._stop.set()
         self.sweeper.stop()
+        self._water_sweeper.stop()
         for w in self.workers.values():
             try:
                 w.flush_night()

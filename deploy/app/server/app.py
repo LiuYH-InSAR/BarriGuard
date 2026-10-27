@@ -135,3 +135,14 @@ async def events(cam_id: str):
     if w is None:
         return Response(status_code=404)
     return {"camera_id": cam_id, "status": w.status(), "events": w.events()}
+
+
+@app.get("/water_gap/{cam_id}/status")
+async def water_status(cam_id: str):
+    """水马YOLO运行状态及统计；不启动检测、不产生报警。"""
+    worker = _workers.get(cam_id)
+    if worker is None:
+        return Response(status_code=404)
+    _, debug = worker.latest()
+    return {"camera_id": cam_id, "status": worker.status(),
+            "water_gap": debug.get("water_yolo")}

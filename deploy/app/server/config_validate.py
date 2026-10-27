@@ -392,15 +392,15 @@ def _parse_binding(name, b, where, base_dir):
             f"{where}.schedule 非法: {schedule!r}（只允许 day/night）"
         )
     spec_fields = {f.name for f in _dc_fields(ALGO_SPECS[name])}
-    if "calibration" in spec_fields:
+    if "calibration" in spec_fields and not (name == "water_gap" and b.get("backend") == "yolo"):
         _require(b, ("calibration",), where)
     status = _parse_enum(
         CalibrationStatus, b.get("status", "ready"), f"{where}.status"
     )
     spec = _build_spec(name, b, schedule, status, where, base_dir)
     if name == "water_gap":
-        if spec.backend not in ("legacy", "blocks") or spec.detect_hz < 0 or spec.max_observation_gap_s <= 0:
-            raise ConfigError(f"{where}: backend must be legacy/blocks, detect_hz nonnegative, max_observation_gap_s positive")
+        if spec.backend not in ("legacy", "blocks", "yolo") or spec.detect_hz < 0 or spec.max_observation_gap_s <= 0:
+            raise ConfigError(f"{where}: backend must be legacy/blocks/yolo, detect_hz nonnegative, max_observation_gap_s positive")
         if spec.backend == "blocks" and not (spec.manual_blocks and spec.manual_reference and spec.manual_parameters):
             raise ConfigError(f"{where}: blocks requires manual_blocks/manual_reference/manual_parameters")
     return AlgorithmBinding(schedule=schedule, spec=spec)
