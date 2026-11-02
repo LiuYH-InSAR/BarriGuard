@@ -18,3 +18,4 @@ Ultralytics
 deploy/.env
 deploy/.env.*
 deploy/config.local.yaml
+!deploy/.env.example
