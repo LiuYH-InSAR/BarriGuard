@@ -32,7 +32,6 @@ def verify_files(manifest, result):
 
 def check_runtime(config, load_model, result):
     from server.config import load_runtime
-    from night_lamp.lamp_checks import LampChecks
     from water_barrier.yolo_params import PARAMS
     with contextlib.redirect_stdout(io.StringIO()):
         cfg = load_runtime(str(config))
@@ -48,16 +47,9 @@ def check_runtime(config, load_model, result):
         lamp = camera.algorithms.get('night_lamp')
         if water is not None and water.spec.backend != 'yolo':
             raise ValueError(f'{camera.id}: water backend is not yolo')
-        regions = None
-        if lamp is not None:
-            if not lamp.spec.lamp_checks.enabled:
-                raise ValueError(f'{camera.id}: fixed lamp polygons are disabled')
-            for path in (lamp.spec.lamp_checks.polygons,lamp.spec.lamp_roi.get('calibration')):
-                if path and not Path(path).resolve().is_relative_to(ROOT):
-                    raise ValueError('Lamp calibration refers outside checkout')
-            regions = len(LampChecks(lamp.spec.lamp_checks).polys)
         cameras.append(dict(id=camera.id,water_backend=water.spec.backend if water else None,
-                            lamp_polygons=regions))
+                            lamp_enabled=lamp is not None,lamp_detector='yolo' if lamp else None,
+                            shared_offset=camera.offset.enabled))
     result.update(cameras=cameras,model=weight.relative_to(ROOT).as_posix(),
         model_sha256=info['sha256'],device=PARAMS.inference.device,
         callback_enabled=cfg.callback.enabled,debug_enabled=PARAMS.debug.enabled,
@@ -73,6 +65,11 @@ def check_runtime(config, load_model, result):
         pixels = np.zeros((PARAMS.inference.imgsz,PARAMS.inference.imgsz,3),np.uint8)
         detector.detect(pixels)
         result['model_loaded'] = True
+        from night_lamp.production import LocalLampDetector
+        for camera in cfg.cameras:
+            binding=camera.algorithms.get('night_lamp')
+            if binding:
+                LocalLampDetector(binding.spec.detector).detect(pixels)
     result.update(rtsp_started=False,callback_sent=False,http_started=False)
 
 

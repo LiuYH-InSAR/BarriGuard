@@ -18,6 +18,8 @@ def overlay(frame, mask):
 
 def draw_annots(vis, annots):
     """画算法标注：box 画框，point 画圈（给以后 night_lamp 灯点位预留）。"""
+    # Keep preview and evidence overlays out of shared detector/night frames.
+    vis = vis.copy()
     for a in annots:
         color = LEVEL_COLOR.get(a.level, (200, 200, 200))
         if a.kind == "polygon":
@@ -49,6 +51,7 @@ def draw_status(vis, status: str):
     """非 OK 状态在画面压横幅：盲区必须看得见，不能静默。"""
     if status == "OK":
         return vis
+    vis = vis.copy()
     cv.putText(vis, status, (20, 50),
                cv.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
     return vis

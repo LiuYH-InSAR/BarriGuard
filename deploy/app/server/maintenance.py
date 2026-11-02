@@ -14,7 +14,7 @@ from loguru import logger
 _SWEEP_INTERVAL_S = 3600.0
 _MIN_INTERVAL_S = 60.0
 # 日志目录不参与 retention 清理：日志是排障底料，不能被 48h TTL 顺手删掉。
-DEFAULT_SKIP_NAMES = ("logs", "night_offline")
+DEFAULT_SKIP_NAMES = ("logs", "camera_motion", "lamp_state")
 
 
 class Sweeper:
@@ -31,8 +31,12 @@ class Sweeper:
         self._skip = {str(n) for n in (skip_names or ())}
         self._ttl_s = max(float(retention_hours), 0.0) * 3600.0
         self._interval_s = max(float(interval_s), _MIN_INTERVAL_S)
+        self._protected=[]
         self._stop = threading.Event()
         self._thread = None
+
+    def protect(self,roots):
+        self._protected.extend(Path(r).resolve() for r in roots)
 
     @property
     def enabled(self) -> bool:
@@ -64,6 +68,8 @@ class Sweeper:
                 continue
             for path in root.rglob("*"):
                 try:
+                    if any(path.resolve().is_relative_to(r) for r in self._protected):
+                        continue
                     if self._skip.intersection(path.parts):
                         continue
                     if path.is_file() and path.stat().st_mtime < cutoff:

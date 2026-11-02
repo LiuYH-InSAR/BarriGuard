@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import typing
 from dataclasses import fields as _dc_fields, is_dataclass
 from datetime import datetime
@@ -20,24 +21,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .contracts import (
-    AlgorithmBinding,
-    AlignmentSpec,
-    BaselineSpec,
-    CalibrationStatus,
-    CallbackSpec,
-    CameraSpec,
-    DetectSpec,
-    MemorySpec,
-    NightLampSpec,
-    LampCheckSpec,
-    OvernightSpec,
-    PeriodicitySpec,
-    PulseSpec,
-    RuntimeConfig,
-    SamplingSpec,
-    ScheduleSpec,
-    TrackSpec,
-    WaterGapSpec,
+    AlgorithmBinding,OffsetSpec,LampDetectorSpec,LampObservationSpec,
+    CalibrationStatus,CallbackSpec,CameraSpec,DetectSpec,NightLampSpec,
+    RuntimeConfig,ScheduleSpec,TrackSpec,WaterGapSpec,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,7 +56,7 @@ TIME_KEYS = ("day_start", "day_end", "night_start", "night_end", "report_at")
 CALLBACK_KEYS = {"enabled", "url", "timeout_s", "queue_size", "image_field", "retries"}
 CALLBACK_REQUIRED = ("enabled", "url")
 
-CAMERA_KEYS = {"id", "name", "rtsp_url", "enabled", "algorithms"}
+CAMERA_KEYS = {"id", "name", "rtsp_url", "enabled", "algorithms", "offset"}
 CAMERA_REQUIRED = ("id", "rtsp_url")
 
 BINDING_KEYS = {"enabled", "schedule", "status"}
@@ -80,20 +66,11 @@ ALLOWED_SCHEDULES = {"day", "night"}
 ALGO_SPECS = {"water_gap": WaterGapSpec, "night_lamp": NightLampSpec}
 # 算法 spec 的嵌套选项键 -> 数据类（water_gap 的 detect/track 也在内）
 NESTED_SPECS = {
-    "sampling": SamplingSpec,
-    "memory": MemorySpec,
-    "baseline": BaselineSpec,
-    "periodicity": PeriodicitySpec,
-    "pulse": PulseSpec,
-    "alignment": AlignmentSpec,
-    "overnight": OvernightSpec,
-    "lamp_checks": LampCheckSpec,
-    "detect": DetectSpec,
-    "track": TrackSpec,
+    'detector': LampDetectorSpec,
+    'observation': LampObservationSpec,
+    'detect': DetectSpec,
+    'track': TrackSpec,
 }
-# NightLampSpec.night_gate / lamp_roi 是裸 dict（contracts 未定数据类），显式列出允许键
-NIGHT_GATE_KEYS = {"enter_threshold", "exit_threshold", "persistence"}
-LAMP_ROI_KEYS = {"calibration", "dilate_px", "up_px"}
 
 
 # --- 基础校验助手 -------------------------------------------------------------------
@@ -265,68 +242,16 @@ def _parse_callback(d, where):
     return CallbackSpec(**kwargs)
 
 
-def _parse_night_gate(d, where):
-    _reject_unknown(d, NIGHT_GATE_KEYS, where)
-    out = {}
-    if "enter_threshold" in d:
-        out["enter_threshold"] = _as_float(d["enter_threshold"], f"{where}.enter_threshold")
-    if "exit_threshold" in d:
-        out["exit_threshold"] = _as_float(d["exit_threshold"], f"{where}.exit_threshold")
-    if "persistence" in d:
-        out["persistence"] = _as_int(d["persistence"], f"{where}.persistence", minimum=1)
-    te, tx = out.get("enter_threshold"), out.get("exit_threshold")
-    if te is not None and tx is not None and not te < tx:
-        raise ConfigError(
-            f"{where} 需 enter_threshold < exit_threshold（迟滞），实际 {te} >= {tx}"
-        )
-    return out
-
-
-def _parse_lamp_roi(d, where, base_dir):
-    """水马灯带 ROI：只在水马行附近找警示灯，路面/天空不再进候选。
-
-    空 dict = 关闭（旧行为）。calibration 复用水马标定 yaml（rows poly）。
-    """
-    _reject_unknown(d, LAMP_ROI_KEYS, where)
-    out = {}
-    if "calibration" in d:
-        out["calibration"] = resolve_resource(
-            _as_str(d["calibration"], f"{where}.calibration"),
-            base_dir, f"{where}.calibration")
-    if "dilate_px" in d:
-        out["dilate_px"] = _as_int(d["dilate_px"], f"{where}.dilate_px",
-                                   minimum=0)
-    if "up_px" in d:
-        out["up_px"] = _as_int(d["up_px"], f"{where}.up_px", minimum=0)
-    if out and "calibration" not in out:
-        raise ConfigError(f"{where} 启用 lamp_roi 必须给 calibration（水马标定 yaml）")
-    return out
-
-
 def _parse_nested(cls, d, where):
     _reject_unknown(d, {f.name for f in _dc_fields(cls)}, where)
     kwargs = {}
     for f in _dc_fields(cls):
         if f.name in d:
             kwargs[f.name] = _coerce(f.type, d[f.name], f"{where}.{f.name}")
-    spec = cls(**kwargs)
-    if cls is OvernightSpec and spec.record_local:
-        if not spec.enabled or spec.anchor != "wall":
-            raise ConfigError(f"{where}.record_local requires enabled=true and anchor=wall")
-        if spec.video_days < 1 or spec.result_days < 1:
-            raise ConfigError(f"{where} retention days must be positive")
-        if Path(spec.record_root).name != "night_offline":
-            raise ConfigError(f"{where}.record_root must end with night_offline (independent retention)")
-    if cls is PulseSpec:
-        for key in ("amplitude_min", "rise_max_s", "width_max_s", "min_duration_s", "max_gap_s"):
-            value = getattr(spec, key)
-            if not math.isfinite(value) or value <= 0:
-                raise ConfigError(f"{where}.{key} must be finite and positive")
-        if not math.isfinite(spec.return_ratio) or not 0 < spec.return_ratio < 1:
-            raise ConfigError(f"{where}.return_ratio must be between 0 and 1")
-        if spec.rise_max_s > spec.width_max_s:
-            raise ConfigError(f"{where}.rise_max_s must not exceed width_max_s")
-    return spec
+    try:
+        return cls(**kwargs)
+    except (TypeError,ValueError) as exc:
+        raise ConfigError(f'{where}: {exc}') from exc
 
 
 def _binding_allowed(name):
@@ -358,18 +283,7 @@ def _build_spec(name, b, schedule, status, where, base_dir):
         kwhere = f"{where}.{key}"
         if key in NESTED_SPECS:
             kwargs[key] = _parse_nested(NESTED_SPECS[key], b[key], kwhere)
-            if key == "lamp_checks" and kwargs[key].enabled:
-                checks = kwargs[key]
-                if not checks.polygons:
-                    raise ConfigError(f"{kwhere}.polygons is required")
-                checks.polygons = resolve_resource(checks.polygons, base_dir, f"{kwhere}.polygons")
-                if not (0 <= checks.heatmap_ratio < 1 and checks.lit_hours >= 1
-                        and 0 < checks.hotspot_strength_min <= 1):
-                    raise ConfigError(f"{kwhere} invalid thresholds")
-        elif key == "night_gate":
-            kwargs[key] = _parse_night_gate(b[key], kwhere)
-        elif key == "lamp_roi":
-            kwargs[key] = _parse_lamp_roi(b[key], kwhere, base_dir)
+
         else:
             kwargs[key] = _coerce(f.type, b[key], kwhere)
     return cls(**kwargs)
@@ -403,6 +317,15 @@ def _parse_binding(name, b, where, base_dir):
             raise ConfigError(f"{where}: backend must be legacy/blocks/yolo, detect_hz nonnegative, max_observation_gap_s positive")
         if spec.backend == "blocks" and not (spec.manual_blocks and spec.manual_reference and spec.manual_parameters):
             raise ConfigError(f"{where}: blocks requires manual_blocks/manual_reference/manual_parameters")
+    if name == 'night_lamp':
+        if schedule != 'night':raise ConfigError(f'{where}: lamps require schedule=night')
+        t=spec.detector
+        if not (0<t.confidence<=1 and math.isfinite(t.confidence)
+                and 0<t.detect_interval_s<=spec.observation.max_sample_gap_s and math.isfinite(t.detect_interval_s)
+                and t.imgsz>=32 and t.visibility in ('background','detected')):
+            raise ConfigError(f'{where}.detector: invalid inference/visibility parameters')
+        t.weights=resolve_resource(t.weights,base_dir,f'{where}.detector.weights')
+        if t.root:t.root=str((base_dir/t.root).resolve())
     return AlgorithmBinding(schedule=schedule, spec=spec)
 
 
@@ -435,6 +358,19 @@ def _parse_cameras(raw, base_dir):
                 bindings[name] = binding
         if not bindings:
             raise ConfigError(f"{where} enabled=true 但所有算法均被禁用")
+        offset = _parse_nested(OffsetSpec,c.get('offset',{}),f'{where}.offset')
+        for key in ('period_s','fast_s','stable_s','refresh_s','reference_ttl_s','feedback_timeout_s','error_px'):
+            value=getattr(offset,key)
+            if not math.isfinite(value) or value<=0:
+                raise ConfigError(f'{where}.offset.{key} must be finite and positive')
+        if offset.max_iterations<1 or offset.reference_ttl_s<=offset.refresh_s:
+            raise ConfigError(f'{where}.offset: invalid limits')
+        if offset.root:
+            offset.root=str((base_dir / offset.root).resolve())
+        if 'night_lamp' in bindings and not re.fullmatch(r'[A-Za-z0-9_-]+',cam_id):
+            raise ConfigError(f'{where}.id: lamps require an alphanumeric/underscore/hyphen ID')
+        if not offset.enabled and 'night_lamp' in bindings:
+            raise ConfigError(f'{where}: lamp detection requires offset.enabled=true')
         cams.append(
             CameraSpec(
                 id=cam_id,
@@ -442,6 +378,7 @@ def _parse_cameras(raw, base_dir):
                 rtsp_url=rtsp_url,
                 enabled=True,
                 algorithms=bindings,
+                offset=offset,
             )
         )
     return cams

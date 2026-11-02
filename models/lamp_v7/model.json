@@ -1,0 +1,10 @@
+{
+  "model": "lamp_v7",
+  "architecture": "YOLO11s",
+  "weights": "best.pt",
+  "sha256": "7806a2ac60d74815e72be7be46bbc77301d890e8c584e326e1c869fdea20f359",
+  "training_imgsz": 320,
+  "inference_imgsz": 320,
+  "source_run": "lamps_yolo11s_320_targeted_20261031",
+  "scope": "Two-camera lamp detection; full flashing system acceptance pending"
+}

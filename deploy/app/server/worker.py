@@ -1,16 +1,4 @@
-"""单相机工作循环 + Runtime 编排。
-
-CameraWorker：Reader 拉流 -> 按 Scheduler 门控的算法 step -> 通用渲染/证据/事件。
-Runtime     ：唯一持有 Scheduler 的编排者，用后台线程 poll() 并把
-              NIGHT_START / NIGHT_FREEZE / NIGHT_FINALIZE / HOURLY_SNAPSHOT
-              分发给各相机的 DayRunner / NightAdapter / Reporter。
-
-边界（Wave 1）：
-  * 本模块不实现任何算法：DAY 走 `server.agents.day.DayRunner`，
-    NIGHT 走 `night_lamp.adapter.NightAdapter`，上报走 `server.reporting.Reporter`。
-  * 依赖模块按冻结签名 import（懒加载，便于在依赖就绪前单测）；
-    测试可通过 Runtime/CameraWorker 的 factory 注入替身。
-"""
+"""Camera runtime: one shared offset owner, water runner and YOLO lamp adapter."""
 import dataclasses
 import threading
 import time
@@ -35,25 +23,12 @@ STOP_JOIN_TIMEOUT_S = 5.0
 STREAM_LOST_AFTER_S = 10.0
 STREAM_HEARTBEAT_S = 600.0
 
-# 夜间 finalize 的对齐基准帧：用 DAY 期缓存的亮帧，而不是 07:00 的实时帧。
-# 07:00 相机可能仍是红外/暗帧，拿它做 ECC 会直接 rejected（2026-09-29 1749 cc=-1）。
-DAY_REF_MIN_LUMA = 100.0
-DAY_REF_REFRESH_S = 1800.0
 DAY_DIAG_PERIOD_S = 300.0
 
 
 def _default_day_runner(camera, spec, algo):
     from .agents.day import DayRunner
     return DayRunner(camera, spec, algo)
-
-
-def _default_night_adapter(camera_id, spec, clock):
-    from night_lamp.adapter import NightAdapter
-    from night_lamp.session import NightSession
-    if spec.overnight.record_local:
-        from night_lamp.local_recording import RecordedAdapter
-        return RecordedAdapter(NightSession(camera_id, spec), spec, clock)
-    return NightAdapter(NightSession(camera_id, spec), spec, clock)
 
 
 def _default_reporter(cfg):
@@ -89,24 +64,6 @@ def _yolo_sweeper(cfg):
     from water_barrier.yolo_params import PARAMS
     return Sweeper((PARAMS.storage.root,), PARAMS.storage.retention_s / 3600,
                    interval_s=PARAMS.storage.cleanup_s)
-
-
-def _default_night_store(cfg):
-    """夜间累计快照目录；output_dir 为空则不启用续跑。"""
-    out = str(getattr(cfg, "output_dir", "") or "").strip()
-    if not out:
-        return None
-    from night_lamp.persist import NightStateStore
-    return NightStateStore(out)
-
-
-def _default_night_archive(cfg):
-    """夜间热力图核心数据（L1）归档目录；output_dir 为空则不启用。"""
-    out = str(getattr(cfg, "output_dir", "") or "").strip()
-    if not out:
-        return None
-    from night_lamp.persist import NightArchive
-    return NightArchive(out)
 
 
 # 业务策略字段 -> 算法 track 键（仅当 spec 暴露该字段时注入）。
@@ -163,22 +120,35 @@ class CameraWorker:
     def __init__(self, camera, scheduler: Scheduler, reporter,
                  jpeg_quality: int = 80, evidence=None,
                  clock: Clock | None = None,
-                 day_factory=None, night_factory=None, store=None,
-                 night_store=None, night_archive=None):
+                 day_factory=None, store=None,
+                 offset_factory=None, lamp_detector_factory=None):
         self._camera = camera
         self.id = camera.id
         self.name = getattr(camera, "name", None) or camera.id
         self._scheduler = scheduler
         self._reporter = reporter
         self._store = store
-        self._night_store = night_store
-        self._night_archive = night_archive
         self._clock = clock or RealClock()
         self._quality = jpeg_quality
         self._evidence = evidence
         self._day_factory = day_factory or _default_day_runner
-        self._night_factory = night_factory or _default_night_adapter
 
+        self._processing_lock=threading.RLock()
+        self._offset_runtime=None
+        self._lamp_adapter=None
+        self._shared_last_frame=None
+        from .contracts import OffsetSpec
+        offset_spec=getattr(camera,'offset',OffsetSpec())
+        if offset_spec.enabled:
+            from camera_motion.runtime import CameraOffsetRuntime
+            self._offset_runtime=(offset_factory or CameraOffsetRuntime)(self.id,offset_spec,self._clock)
+        lamp_binding=(getattr(camera,'algorithms',None) or {}).get('night_lamp')
+        if lamp_binding:
+            if self._offset_runtime is None:raise ValueError('Lamp detection requires shared offset')
+            from night_lamp.production import LampAdapter
+            detector=lamp_detector_factory(lamp_binding.spec.detector) if lamp_detector_factory else None
+            self._lamp_adapter=LampAdapter(self._offset_runtime,lamp_binding.spec,self._clock,detector)
+            self._offset_runtime.attach('night_lamp',self._lamp_adapter)
         self._reader = Reader(camera.rtsp_url)
         self._lock = threading.Lock()
         self._vis = None
@@ -191,8 +161,6 @@ class CameraWorker:
         self._day_alarm_pending: dict = {}
         self._night: dict = {}
         self._latest_frame = None
-        self._day_ref = None
-        self._day_ref_mono = 0.0
         self._diag_last: dict = {}
         self._stop = threading.Event()
         self._stream_lost = False
@@ -225,6 +193,8 @@ class CameraWorker:
             self._thread.join(timeout=STOP_JOIN_TIMEOUT_S)
         if self._ticker.is_alive() and self._ticker is not threading.current_thread():
             self._ticker.join(timeout=STOP_JOIN_TIMEOUT_S)
+        if self._lamp_adapter:self._lamp_adapter.save_state()
+        if self._offset_runtime:self._offset_runtime.save()
 
     def _tick_loop(self):
         """Independent wall-clock ticker.
@@ -257,13 +227,6 @@ class CameraWorker:
         """落盘（若配置 output_dir）+ 异步 callback；任何失败都不冒泡。"""
         if report is None:
             return
-        binding = self._camera.algorithms.get("night_lamp")
-        if (getattr(report, "algorithm", None) == "night_lamp" and binding
-                and binding.spec.overnight.record_local):
-            from night_lamp.local_recording import save_report
-            save_report(report, binding.spec.overnight)
-            if report.report_type == "night_heatmap_burst":
-                return
         if self._store is not None:
             try:
                 self._store.save(report)
@@ -284,69 +247,34 @@ class CameraWorker:
             tick = getattr(ad, "tick", None)
             if callable(tick):
                 try:
-                    tick(now_wall)
+                    with self._processing_lock:tick(now_wall)
                 except Exception:
                     logger.exception("[{}] night tick 失败: {}", self.id, name)
-            for rep in self._take_night_reports(ad):
-                self.publish(rep)
 
-    @staticmethod
-    def _take_night_reports(adapter) -> list:
-        take = getattr(adapter, "take_reports", None)
-        if take is None:
-            return []
-        return take() or []
 
     # ------------------------------------------------------------ Runtime 回调
     def start_night(self):
-        """NIGHT_START：为每个 schedule=night 的绑定建独立 NightAdapter。"""
-        for name, binding in (getattr(self._camera, "algorithms", None) or {}).items():
-            if getattr(binding, "schedule", None) != "night":
-                continue
-            with self._lock:
-                if name in self._night:
-                    continue
-                try:
-                    ad = self._night_factory(
-                        self.id, binding.spec, self._clock)
-                except Exception:
-                    logger.exception("[{}] 创建 NightAdapter 失败: {}", self.id, name)
-                    continue
-                self._attach_night_state(ad, name)
-                self._night[name] = ad
-        logger.info("[{}] 夜间采样开始: {}", self.id, sorted(self._night))
-
-    def _attach_night_state(self, adapter, name):
-        """挂上夜间快照 store 与 L1 归档，并尝试恢复本夜累计（跨重启续跑）。"""
-        attach = getattr(adapter, "attach_persistence", None)
-        if callable(attach) and self._night_store is not None:
-            try:
-                attach(self._night_store)
-            except Exception:
-                logger.exception("[{}] 夜间持久化挂载失败: {}", self.id, name)
-        attach_arch = getattr(adapter, "attach_archive", None)
-        if callable(attach_arch) and self._night_archive is not None:
-            try:
-                attach_arch(self._night_archive)
-            except Exception:
-                logger.exception("[{}] 夜间归档挂载失败: {}", self.id, name)
-        if self._night_store is None:
-            return
-        try:
-            adapter.restore()
-        except Exception:
-            logger.exception("[{}] 夜间状态恢复失败: {}", self.id, name)
+        """Activate the sole lamp adapter without replacing persistent IDs."""
+        if self._lamp_adapter is None:return
+        with self._lock:
+            if 'night_lamp' in self._night:return
+            self._lamp_adapter.start_night()
+            self._night['night_lamp']=self._lamp_adapter
 
     def flush_night(self):
         """停机前把在跑的夜间累计落盘；best-effort，不冒泡。"""
         with self._lock:
             adapters = list(self._night.values())
+        if self._lamp_adapter and self._lamp_adapter not in adapters:
+            adapters.append(self._lamp_adapter)
+        if self._offset_runtime:
+            with self._processing_lock:self._offset_runtime.save()
         for ad in adapters:
             save = getattr(ad, "save_state", None)
             if not callable(save):
                 continue
             try:
-                save()
+                with self._processing_lock:save()
             except Exception:
                 logger.exception("[{}] night flush 失败", self.id)
 
@@ -356,15 +284,19 @@ class CameraWorker:
         if not callable(health):
             return
         info = health()
-        if info.get("connected"):
+        last_frame = info.get("last_frame_mono")
+        ref = last_frame if last_frame is not None else info.get("started_mono")
+        stale = ref is not None and now_mono - ref >= STREAM_LOST_AFTER_S
+        # A live decoder process/socket can stop delivering pixels. Connection
+        # state alone must neither hide that outage nor announce recovery.
+        if info.get("connected") and last_frame is not None and not stale:
             if self._stream_lost:
                 self._stream_lost = False
                 self._stream_last_emit = now_mono
                 self._set_status("OK")
                 self._emit_status("stream_restored", info)
             return
-        ref = info.get("last_frame_mono") or info.get("started_mono")
-        if ref is None or now_mono - ref < STREAM_LOST_AFTER_S:
+        if ref is None or not stale:
             return
         if not self._stream_lost:
             self._stream_lost = True
@@ -372,7 +304,8 @@ class CameraWorker:
             self._set_status("STREAM_LOST")
             self._emit_status("stream_lost", info)
             return
-        if now_mono - (self._stream_last_emit or now_mono) >= STREAM_HEARTBEAT_S:
+        last_emit = self._stream_last_emit if self._stream_last_emit is not None else now_mono
+        if now_mono - last_emit >= STREAM_HEARTBEAT_S:
             self._stream_last_emit = now_mono
             self._emit_status("stream_lost", info)
 
@@ -400,29 +333,12 @@ class CameraWorker:
                 logger.exception("[{}] night freeze 失败", self.id)
         logger.info("[{}] 夜间采样冻结", self.id)
 
-    def _maybe_capture_day_ref(self, frame, now_mono):
-        """DAY 期内缓存一帧够亮的画面，供夜间 finalize 对齐（默认半小时刷一次）。
-
-        夜间 finalize 在 07:00，此刻相机常仍是红外/暗帧；用它做 ECC 会直接
-        rejected（2026-09-29 1749 cc=-1）。缓存一帧真正的白昼帧即可稳定对齐。
-        """
-        if self._scheduler.state() != ScheduleState.DAY:
-            return
-        if (self._day_ref is not None
-                and now_mono - self._day_ref_mono < DAY_REF_REFRESH_S):
-            return
-        if float(frame.mean()) < DAY_REF_MIN_LUMA:
-            return
-        self._day_ref = frame.copy()
-        self._day_ref_mono = now_mono
 
     def _select_day_base(self):
-        """给 finalize 的对齐基准帧；返回 (frame, source)。"""
-        if self._day_ref is not None:
-            return self._day_ref, "day_ref"
-        if self._latest_frame is not None:
-            return self._latest_frame.copy(), "live"
-        return None, "none"
+        if self._offset_runtime is not None:
+            image=self._offset_runtime.day_reference()
+            if image is not None:return image,'shared_day_reference'
+        return (self._latest_frame.copy(),'live') if self._latest_frame is not None else (None,'none')
 
     def _log_day_diag(self, name, res):
         """白昼算法诊断（节流）：support 峰值 / 命中 run 数 / 轨道状态与 RER。"""
@@ -433,21 +349,10 @@ class CameraWorker:
                     self.id, name, diag.get("sup_max"), diag.get("runs"),
                     diag.get("tracks"))
 
-    def _log_night_report(self, name, report, base, base_src):
-        md = getattr(report, "metadata", None) or {}
-        luma = None if base is None else round(float(base.mean()), 1)
-        dyn = (md.get("online_candidate_discovery") or {}).get("n_tracked_dyn")
-        roi = md.get("lamp_roi") or {}
-        logger.info(
-            "[{}] night finalize {} status={} base={}(luma={}) image={} "
-            "align={} cc={} flash={} cand={}(+{}) dyn={} overflow={} "
-            "roi={} coverage={}",
-            self.id, name, getattr(report, "status", "?"), base_src, luma,
-            md.get("image_mode"), md.get("alignment_status"),
-            (md.get("day_alignment") or {}).get("cc"), md.get("n_flash"),
-            md.get("n_cand"), md.get("n_cand_total"), dyn,
-            md.get("candidate_overflow"),
-            ("on" if roi.get("enabled") else "off"), md.get("coverage"))
+    def _log_night_report(self,name,report,base,base_src):
+        metadata=getattr(report,'metadata',{}) or {}
+        logger.info('[{}] lamp report status={} lamps={} reference={}',
+            self.id,report.status,len(metadata.get('lamps',[])),metadata.get('reference'))
 
     def finalize_night(self, ts_wall: datetime):
         """NIGHT_FINALIZE：day_ref -> finalize -> submit -> release（按夜隔离）。"""
@@ -456,7 +361,7 @@ class CameraWorker:
         base, base_src = self._select_day_base()
         for name, ad in adapters:
             try:
-                report = ad.finalize(base, ts_wall)
+                with self._processing_lock:report = ad.finalize(base, ts_wall)
                 if report is not None:
                     self._log_night_report(name, report, base, base_src)
                     self.publish(report)
@@ -505,8 +410,12 @@ class CameraWorker:
             if getattr(binding, "schedule", None) != "day":
                 continue
             try:
+                kwargs={}
+                if self._offset_runtime is not None and name=='water_gap' and getattr(binding.spec,'backend','')=='yolo':
+                    kwargs=dict(offset_module=self._offset_runtime.offset,wall_clock=lambda:self._clock.wall().timestamp())
                 algo = registry.create(name, shape,
-                                       _load_calibration(name, binding.spec), self.id)
+                                       _load_calibration(name, binding.spec), self.id,**kwargs)
+                if kwargs:self._offset_runtime.attach('water_gap',algo)
                 self._day_runners[name] = self._day_factory(
                     self._camera, binding.spec, algo)
             except Exception:
@@ -514,22 +423,66 @@ class CameraWorker:
         self._built = True
         logger.info("[{}] 已加载白昼算法: {}", self.id, sorted(self._day_runners))
 
+    def _process_shared(self,frame,wall,mono,frame_id,source_ts=None):
+        if self._offset_runtime is None:return
+        with self._processing_lock:
+            if frame_id is None or frame_id==self._shared_last_frame:return
+            self._shared_last_frame=frame_id
+            state=self._scheduler.state()
+            water=(getattr(self._camera,'algorithms',None) or {}).get('water_gap')
+            continuous=water is not None and getattr(water.spec,'backend','')=='yolo'
+            latest=self._offset_runtime.offset.latest
+            lamp=(getattr(self._camera,'algorithms',None) or {}).get('night_lamp')
+            cadence=lamp.spec.observation.cadence_s if lamp else 1800.
+            precheck=(wall.timestamp()%cadence)>=max(0.,cadence-300.)
+            needs_recovery=(latest is None or latest.status!='aligned' or self._offset_runtime.offset.pending is not None)
+            needs_recovery=needs_recovery or bool(self._lamp_adapter and self._lamp_adapter.needs_offset_recheck)
+            if continuous or state!=ScheduleState.NIGHT or precheck or needs_recovery:
+                self._offset_runtime.process(frame,wall.timestamp(),mono,frame_id,
+                    light_hint=('night' if state in (ScheduleState.NIGHT,ScheduleState.FROZEN)
+                                else 'transition' if state!=ScheduleState.DAY else None))
+            if self._lamp_adapter:
+                try:
+                    self._lamp_adapter.on_shared_frame(frame,wall,source_ts if source_ts is not None else mono,
+                        frame_id,self._scheduler.is_active(self.id,'night_lamp'),
+                        self._scheduler.state()==ScheduleState.DAY)
+                except Exception as error:
+                    self._lamp_adapter.record_error(error)
+                    logger.exception('[{}] lamp processing failed; shared offset remains available',self.id)
+
     def _loop(self):
         t0, n0 = time.time(), 0
+        last_decoded_id = object()
         while not self._stop.is_set():
-            frame = self._reader.read()
+            sample=getattr(self._reader,'sample',None)
+            if callable(sample):
+                frame,frame_id,source_ts=sample()
+            else:
+                frame=self._reader.read();frame_id=None;source_ts=None
             self._check_stream_health(self._clock.monotonic())
             now_wall = self._clock.wall()
             now_mono = self._clock.monotonic()
             _seq_fn = getattr(self._reader, "seq", None)
-            frame_id = _seq_fn() if callable(_seq_fn) else None
+            if not callable(sample):frame_id = _seq_fn() if callable(_seq_fn) else None
             if frame is None:
                 time.sleep(0.05)
                 continue
+            if frame_id is not None and frame_id == last_decoded_id:
+                # Reader keeps the latest image. Reusing it must not rerun
+                # water evidence or JPEG encoding while another camera works.
+                # Stream-health checks above and the independent ticker remain active.
+                self._stop.wait(0.01)
+                continue
+            last_decoded_id = frame_id
             if not self._built:
                 self._build(frame.shape)
             self._latest_frame = frame
-            self._maybe_capture_day_ref(frame, now_mono)
+            try:
+                self._process_shared(frame,now_wall,now_mono,frame_id,source_ts)
+            except Exception:
+                logger.exception('[{}] shared offset/lamp processing failed',self.id)
+                if self._offset_runtime:
+                    self._offset_runtime.offset.latest=None  # No stale alignment may justify absence.
 
             annots, debug, events = [], {}, []
             status = "OK"
@@ -559,19 +512,6 @@ class CameraWorker:
                 if now_mono - self._diag_last.get(name, 0.0) >= DAY_DIAG_PERIOD_S:
                     self._log_day_diag(name, res)
                     self._diag_last[name] = now_mono
-
-            with self._lock:
-                adapters = list(self._night.items())
-            for name, ad in adapters:
-                if not self._scheduler.is_active(self.id, name):
-                    continue
-                try:
-                    ad.on_frame(frame, now_wall, now_mono, frame_id=frame_id)
-                except Exception:
-                    logger.exception("[{}] night on_frame 失败: {}", self.id, name)
-                    continue
-                for rep in self._take_night_reports(ad):
-                    self.publish(rep)
 
             mask = debug.get("roi_mask")
             vis = render.draw_annots(
@@ -614,7 +554,9 @@ class Runtime:
 
     def __init__(self, cfg, clock: Clock | None = None, reporter=None,
                  evidence=None,
-                 day_factory=None, night_factory=None):
+                 day_factory=None):
+        from .performance import configure_native_threads
+        configure_native_threads()
         self.cfg = cfg
         self.clock = clock or RealClock()
         self.scheduler = Scheduler(cfg, self.clock)
@@ -623,8 +565,6 @@ class Runtime:
         if isinstance(getattr(cfg, "server", None), dict):
             quality = int(cfg.server.get("jpeg_quality", 80))
         self.store = _default_store(cfg)
-        self.night_store = _default_night_store(cfg)
-        self.night_archive = _default_night_archive(cfg)
         self.sweeper = _default_sweeper(cfg)
         self._water_sweeper = _yolo_sweeper(cfg)
         self.workers = {}
@@ -633,10 +573,13 @@ class Runtime:
                 continue
             self.workers[cam.id] = CameraWorker(
                 cam, self.scheduler, self.reporter, quality, evidence=evidence,
-                clock=self.clock, day_factory=day_factory,
-                night_factory=night_factory, store=self.store,
-                night_store=self.night_store,
-                night_archive=self.night_archive)
+                clock=self.clock, day_factory=day_factory,store=self.store)
+        protected=[]
+        for worker in self.workers.values():
+            if worker._offset_runtime:protected.append(worker._offset_runtime.offset.store.root)
+            if worker._lamp_adapter:protected.append(worker._lamp_adapter.controller.archive.root)
+        self.sweeper.protect(protected)
+        self._water_sweeper.protect(protected)
         self._stop = threading.Event()
         self._thread = None
 

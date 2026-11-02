@@ -5,29 +5,29 @@ from dataclasses import replace
 from .yolo_geometry import build_rows, match_boxes, warp_boxes, infer_initial_gaps
 
 
+from camera_motion.references import ReferenceLibrary
+
+
 class References:
-    def __init__(self, params, store, vision):
+    def __init__(self, params, store, vision, library=None):
         self._p = params
         self._store = store
         self._vision = vision
-        self.view = ''
-        self.anchor = None
-        self.appearances = []
+        self.shared = library is not None
+        self.library = library or ReferenceLibrary(params, store, vision, lambda: self.boxes)
         self.boxes = []
         self.rows = []
         self.identities = []
         self.baseline_created = None
-        self.last_refresh = None
         self._candidates = []
-        self._light = None
-        self._light_count = 0
         self.inferred_indices = []
         self.gap_scan_complete = False
 
     def expired(self, stamp):
-        ttl = self._p.storage.retention_s
-        self.appearances = [r for r in self.appearances if stamp-r['created'] < ttl]
-        return not self.appearances or (self.baseline_created is not None and stamp-self.baseline_created >= ttl)
+        empty = (not any(stamp-r['created']<self.library._p.storage.retention_s
+                         for r in self.library.appearances)) if self.shared else self.library.expired(stamp)
+        return empty or (self.baseline_created is not None
+                         and stamp-self.baseline_created >= self._p.storage.retention_s)
 
     def start_view(self, frame, stamp, quality):
         self.view = f'{stamp:.6f}'
@@ -41,58 +41,16 @@ class References:
         self.add_appearance(frame,stamp,quality,np.eye(3))
 
     def add_appearance(self, frame, stamp, quality, anchor_to_frame):
-        path = self._store.record('references',stamp,dict(view=self.view,quality=quality,
-                        anchor_to_frame=anchor_to_frame,created=stamp),frame)
-        data = self._store.read_record(path)
-        category_light = quality.get('reference_light',quality['light'])
-        entry = dict(record=path,image=data['image'],created=stamp,light=category_light,
-                     matrix=np.asarray(anchor_to_frame).tolist())
-        self.appearances.append(entry)
-        category = [r for r in self.appearances if r['light']==category_light]
-        discarded = category[:-self._p.reference.per_light]
-        self.appearances = [r for r in self.appearances if r not in discarded]
-        self.last_refresh = stamp
-        # 只续存已确认位置，不根据漏检删除水马；视角坐标保持不变。
+        self.library.add_appearance(frame, stamp, quality, anchor_to_frame)
         if self.boxes:
             self.baseline_created = stamp
-            self._store.record('baselines',stamp,self.baseline_dump())
+            self._store.record('baselines', stamp, self.baseline_dump())
 
     def refresh_due(self, quality, stamp):
-        light = quality.get('reference_light',quality['light'])
-        if light == self._light:
-            self._light_count += 1
-        else:
-            self._light,self._light_count = light,1
-        has_light = any(r['light']==light for r in self.appearances)
-        return ((self.last_refresh is None or stamp-self.last_refresh >= self._p.reference.refresh_s)
-                or (not has_light and self._light_count >= self._p.reference.light_confirm))
+        return self.library.refresh_due(quality, stamp)
 
     def align(self, frame):
-        best = None
-        best_matches = None
-        for entry in reversed(self.appearances):
-            image = self._store.read_image(entry['image'])
-            if image is None:
-                continue
-            matrix = np.asarray(entry['matrix'])
-            exclusion = warp_boxes(self.boxes,matrix)
-            alignment = self._vision.align(image,frame,exclusion)
-            if not alignment.valid:
-                if best is None:
-                    best = alignment
-                continue
-            alignment.matrix = alignment.matrix @ matrix
-            # 位移相对整个视角基准，不能被不断刷新的外观参照归零。
-            h,w = frame.shape[:2]
-            import cv2 as cv
-            points = np.float32([[0,0],[w,0],[0,h],[w,h]])
-            shifted = cv.perspectiveTransform(points[None],alignment.matrix)[0]
-            alignment.displacement = float(np.max(np.linalg.norm(shifted-points,axis=1))/np.hypot(h,w))
-            if best is None or not best.valid or alignment.details['inliers'] > best.details['inliers']:
-                best = alignment
-                best_matches = self._vision.last_matches
-        self._vision.last_matches = best_matches
-        return best
+        return self.library.align(frame)
 
     def collect(self, detections, anchor_to_frame, stamp):
         boxes = warp_boxes(detections,np.linalg.inv(anchor_to_frame))
@@ -156,6 +114,36 @@ class References:
         return dict(**self.baseline_dump(),appearances=self.appearances,last_refresh=self.last_refresh)
 
     def restore(self, data, stamp):
+        if self.shared:
+            if (self.library.anchor is not None and self.library.view != data['view']
+                    and data['view'] not in getattr(self.library,'migration_sources',())):
+                return False
+            self.restored_view=data['view']
+            if self.library.anchor is None:
+                # One-time import from the previous water-private store. Never
+                # publish private relative paths into the shared library.
+                entries=[]
+                for entry in data.get('appearances',[]):
+                    if stamp-entry['created']>=self._p.storage.retention_s:continue
+                    image=self._store.read_image(entry['image'])
+                    if image is None:continue
+                    path=self.library._store.record('references',entry['created'],
+                        dict(view=data['view'],created=entry['created'],quality={'light':entry['light']},
+                             anchor_to_frame=entry['matrix']),image)
+                    record=self.library._store.read_record(path)
+                    entries.append(dict(entry,record=path,image=record['image']))
+                if not entries:return False
+                self.library.view=data['view']
+                self.library.appearances=entries
+                self.library.last_refresh=data.get('last_refresh')
+                self.library.anchor=self.library._store.read_image(entries[0]['image'])
+            self.boxes=data.get('boxes',[])
+            self.rows=data.get('rows',[])
+            self.identities=data.get('identities',[])
+            self.inferred_indices=data.get('inferred_indices',[])
+            self.gap_scan_complete=data.get('gap_scan_complete',False)
+            self.baseline_created=data.get('baseline_created')
+            return bool(self.boxes) and not self.expired(stamp)
         self.view = data['view']
         self.boxes = data.get('boxes',[])
         self.rows = data.get('rows',[])
@@ -169,5 +157,37 @@ class References:
             return False
         anchor = next((r for r in self.appearances if np.allclose(r['matrix'],np.eye(3))),None)
         # anchor图到期后仍使用统一坐标变换，不再依赖原始anchor像素。
-        self.anchor = self._store.read_image((anchor or self.appearances[0])['image'])
+        self.anchor = self.library._store.read_image((anchor or self.appearances[0])['image'])
         return self.anchor is not None
+
+    @property
+    def view(self):
+        return self.library.view
+
+    @view.setter
+    def view(self, value):
+        self.library.view = value
+
+    @property
+    def anchor(self):
+        return self.library.anchor
+
+    @anchor.setter
+    def anchor(self, value):
+        self.library.anchor = value
+
+    @property
+    def appearances(self):
+        return self.library.appearances
+
+    @appearances.setter
+    def appearances(self, value):
+        self.library.appearances = value
+
+    @property
+    def last_refresh(self):
+        return self.library.last_refresh
+
+    @last_refresh.setter
+    def last_refresh(self, value):
+        self.library.last_refresh = value

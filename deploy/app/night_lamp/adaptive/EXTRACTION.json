@@ -1,0 +1,66 @@
+{
+  "version": "v9c",
+  "transformations": "relative imports; remove unused offline base runner/loader/path injection; expose crop size/coarse confidence; reuse stateless image metrics; equivalent vectorized background masks; bounded geometry memoization; omit provably non-influential distant mask centers; pause unverified registration failures while preserving reference and identity, reset only verified large movement; reverify a one-hit body variant only around a previously optically proved fixture, independent audit provenance and fresh optical proof, reset observation on merge; align quarantine candidate confidence with optical verification; independently retain admitted nighttime emitter epochs and require fresh unique-core proof plus recent detection updates before resolving a sparse body variant, never borrow old counts; retain a recently flashing confirmed sampling region when the proposed core is fully inside its trusted support, reject a correction into already excluded pixels inside that sampler without reopening the mask, retain baseline locator behavior after ablation; recover a stale photometric baseline only with clear registered continuous frames, locked non-quarantined emitter and new detector updates in a stable background interval, reset calibration and all current observation evidence; optically reconcile jittered overlapping detector modes, independently audit one-core proof and prior epochs, revalidate orphaned quarantine with fresh bounded segmented evidence, exclude gap-crossing cycles and never combine business streams; pulse-first business policy: 15 admitted complete cycles pass without 300 seconds; 300 seconds applies to negative evidence and global discovery; unpassed and visual counters continue beyond 300 seconds until the observation deadline; accepted same-source positives survive ordinary recalibration but not source/geometry invalidation or unsafe alias merges; verify low-texture local regions against bounded frozen wider contexts with local-change and fresh-body guards; prove separate temporal cores in one shared window before discarding a multi-source group hypothesis; reset newly separated evidence, preserve only an independently admitted identical sampler after optical revalidation; pause known business evidence during ambiguity; retire prior visual-policy failure history; extract pure search planner with default legacy request ordering unchanged; bounded independent survey remains an experimental policy, not enabled by production config; reverify a prior independently established body with a compact strong core and synchronized halo when diffuse total variation is misleading; retain the original ownership branch, require independent audit provenance and all optical/neighbor checks, reset all observation evidence on resolution",
+  "modules": {
+    "adaptive_prototype.py": {
+      "source_sha256": "3185b17f8b01bf544ebda2abe5203f876150c9d1dec8b126709c224177ac5f19",
+      "extracted_sha256": "9efe2c3c95222703bdb0a80de6a576497cb3b30c2735faa925c585f03b249b08"
+    },
+    "adaptive_flash_signal.py": {
+      "source_sha256": "3a6d40f8eee8b626b81d2e621661c3a443b13f2b3063ec12760a608eac4dfbea",
+      "extracted_sha256": "3a6d40f8eee8b626b81d2e621661c3a443b13f2b3063ec12760a608eac4dfbea"
+    },
+    "adaptive_tracking_v5.py": {
+      "source_sha256": "5815eaadd365a5ab211dcf1b3583e348b93359cb84573b2500a3f3a81df57f6d",
+      "extracted_sha256": "3c2eebd94d25a356dc22bd04e593bab90328ee68b896cfe7fb400f1337572cbb"
+    },
+    "adaptive_v5.py": {
+      "source_sha256": "fb46b5f33d5a596482c7b753568549e38672078e9e8d6e0819296298d856f33d",
+      "extracted_sha256": "b3d0f265fbfc24eaadaf816d7137ce424c7e4c82822400a71666f6a2a955e1f2"
+    },
+    "adaptive_v6.py": {
+      "source_sha256": "780ee6ab663acbe04cbee0c48218841ce4e7f499c506d0a9cd3c378fbd45978d",
+      "extracted_sha256": "6457e02f28baf5b349436c91a6c6a5c698e5d95351d2659bd8727c8d60beeed5"
+    },
+    "adaptive_v7.py": {
+      "source_sha256": "021e176b681a89734de0a4598c9a18b550409be263f43e8744a1991dbe5b2eff",
+      "extracted_sha256": "64164328f63e54c4f611de98d91adbfaadce2da8ef6452843b4577eeef9d4d16"
+    },
+    "adaptive_v8.py": {
+      "source_sha256": "532e741aaec29ae62dd266ef9a1b9a7c0836b35d2877b6a49cad8777be1a292f",
+      "extracted_sha256": "75d2f54f30ff9a9107b1d412526ec905ce78523b226e125ce4cb7810b9bdf860"
+    },
+    "adaptive_v9.py": {
+      "source_sha256": "dd5a929cc78e4e5ed6840c18ef06dd45a567f1fb55da16ccc18eb964dd8db8a5",
+      "extracted_sha256": "2675e59c0e72ff7bc91c87351d56c873be101839a258f48de9096c7de8571536"
+    },
+    "adaptive_observation_audit.py": {
+      "source_sha256": "cf809ca7844af92a9a7925ec4f9d338593b5a87483103450833969a787277a18",
+      "extracted_sha256": "b5e241dc23e7867ff32b39c736554ddde98de864c4f0567661a2d2b8f814d3f7"
+    },
+    "nested_fixture_v6.py": {
+      "source_sha256": "0c34796a1a70b1d4746f841927a62731ee27cb36fc5f523a23b89a26d6022322",
+      "extracted_sha256": "15227b107d5b7b29ddcbead488eed365ad43a8e5c9d56aef96ed2df5c603052e"
+    },
+    "optical_fixture_v9.py": {
+      "source_sha256": "d54ddc30f38e520c65311834952b2dff1497daec331511b0eb296a4d0b0460d8",
+      "extracted_sha256": "d489bdb1bea40b0df887bdee9f4345aa4004a0d4ab1e45aeb9a96a9eca696394"
+    },
+    "exposure_recovery.py": {
+      "extracted_sha256": "56ef8f96fc6cba957de965698ad48bc2bc8c27f7687ef703c845cac8b9a41355",
+      "source_sha256": "e9de2daba00856853ab37c70012cb5ea013d4a4d2ad731fb496acd2bd448b8de"
+    },
+    "search_plan.py": {
+      "extracted_sha256": "a305e3764d1976c595007cca8fc40c3aa45e65836bcd488828d65e9d7509f778",
+      "source_sha256": "a305e3764d1976c595007cca8fc40c3aa45e65836bcd488828d65e9d7509f778"
+    },
+    "source_separation.py": {
+      "extracted_sha256": "1126e067b32b45b6637b9e23d03da15014b37df3a4d36a75e583434577febc63",
+      "source_sha256": "4ec92eee8278cb44368c9dd9e1de95f5dae8406b5be67664bbb5158eca1127aa"
+    },
+    "single_source.py": {
+      "extracted_sha256": "e8310b3e3966f89583896268188f81770b36ac1ce2909452ea9756d9e70a378f",
+      "source_sha256": "db21288aa7b176274e3ebc4058749a4cf9d29ccc87ba4a5c85ab37fb9308e41b"
+    }
+  }
+}

@@ -42,7 +42,7 @@ class Report:
     """
     camera: str
     algorithm: str
-    report_type: str              # 如 "night_heatmap" / "gap_overlay"
+    report_type: str              # 如 "lamp_status" / "gap_overlay"
     created_at: str               # ISO-8601（含时区）
     image_jpeg: bytes | None = None
     metadata: dict = field(default_factory=dict)

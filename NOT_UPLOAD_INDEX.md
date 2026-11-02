@@ -28,4 +28,8 @@
 
 此外不提交：`.venv/`、服务器`deploy/.env`与`config.local.yaml`、运行生成的`data/`与`output/`、临时检查副本。本次检查记录在`tmp/deployment_tests/`，不提交GitHub。
 
+2026-11-02完成版备份位于`tmp/backups/completed_lamp_v7_*`，含逐文件SHA256和恢复说明；`Lamps_labeling/`、训练视频、训练结果与本地验收视频均被Git和Docker忽略。本轮发布检查记录在`tmp/completion_release_20261102/`。
+
 没有生成或上传压缩包。
+
+2026-10-28：旧灯光源码和原 circle/poly 标注素材已从生产目录移入 tmp/retired_lamp_backend_*。对应 move_manifest.json 记录移动位置；原 tmp/backups/before_lamp_refactor_* 备份未修改。

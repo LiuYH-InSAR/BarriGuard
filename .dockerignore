@@ -2,6 +2,7 @@
 .venv*
 tmp
 training
+Lamps_labeling
 output
 data
 evidence
@@ -11,6 +12,7 @@ Ultralytics
 **/*.pyc
 **/*.pt
 !models/water_barrier_v6/best.pt
+!models/lamp_v7/best.pt
 **/*.zip
 **/*.tar.gz
 deploy/.env

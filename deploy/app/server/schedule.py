@@ -7,12 +7,12 @@
     DAY   = [day_start, day_end)           # 仅此区间内 state==DAY，day 绑定活跃
     OFF   = [day_end, night_start)         # 待机：day 算法不活跃，夜灯亦不活跃
     NIGHT = [night_start, 24:00) ∪ [00:00, night_end)   # 跨零点，逻辑不变
-    FROZEN = [night_end, report_at)        # 采样停止，保留 NightSession
+    FROZEN = [night_end, report_at)        # 采样停止，保留 灯具档案
     report_at 当刻 -> FINALIZING
 
 时间语义（见 tmp/wave1-interfaces.md 3.2）：
     night_start -> NIGHT_START      进入夜间采样
-    night_end   -> NIGHT_FREEZE     停止采样，保留 NightSession 等 07:00
+    night_end   -> NIGHT_FREEZE     停止采样，保留 灯具档案 等 07:00
     report_at   -> NIGHT_FINALIZE   出夜灯热力图并 release
     report_interval_s -> HOURLY_SNAPSHOT（面向配置了该字段的相机）
 
@@ -184,6 +184,15 @@ class Scheduler:
                 return [
                     RuntimeEvent(RuntimeEventType.NIGHT_START, now),
                     RuntimeEvent(RuntimeEventType.NIGHT_FREEZE, now),
+                ]
+            if self._state == ScheduleState.FINALIZING:
+                # Bootstrap the adapter before dispatching a report when the
+                # first poll lands exactly on report_at. The next poll leaves
+                # FINALIZING, so this boundary is still emitted only once.
+                return [
+                    RuntimeEvent(RuntimeEventType.NIGHT_START, now),
+                    RuntimeEvent(RuntimeEventType.NIGHT_FREEZE, now),
+                    RuntimeEvent(RuntimeEventType.NIGHT_FINALIZE, now),
                 ]
             return []
 

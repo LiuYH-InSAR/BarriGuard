@@ -1,16 +1,5 @@
-# 服务器更新入口
+# 运行部署
 
-完整步骤见仓库根[部署说明](../SERVER_DEPLOYMENT.md)。
+使用项目根目录的 SERVER_DEPLOYMENT.md 与 PRODUCTION_WIRING.md。灯具仅有新 YOLO 方案，原 poly、热力图与周期性后端已移除。
 
-服务器在仓库根`git pull --ff-only`后进入本目录：
-
-```bash
-docker compose build --pull barriguard
-docker compose run --rm --no-deps barriguard python -B check_deploy.py --load-model
-docker compose up -d --no-build barriguard
-docker compose ps
-```
-
-检查成功再替换容器。使用`.env`选择`config.local.yaml`，避免Git更新覆盖服务器私有配置。初次测试从`config.test.yaml`复制，callback关闭。
-
-保留原FFmpeg、灯光算法和数据挂载；新增YOLO依赖、V6模型和水马结果持久化。默认CPU。本机尚未实测Docker构建，首次服务器构建需验证依赖下载与性能。
+当前 config.yaml 与 config.test.yaml 已固定 models/lamp_v7/best.pt、输入320，v9c 已接入生产控制器；验收前保持灯具实时禁用，水马仍可运行。有效窗口及实时性能验收通过后再设置 enabled=true。不要添加旧 backend、lamp_checks 或 periodicity 配置。

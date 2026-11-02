@@ -1,6 +1,6 @@
 """算法注册表: server 构造/校验算法的唯一入口（deploy 生产世界版本）。
 
-water_barrier 走这里；夜灯算法本体（NightAdapter/NightSession）由
+water_barrier 走这里；夜灯算法本体（LampAdapter）由
 ``server.worker`` 的工厂直接构造（纯 spec 驱动，无算法侧配置文件），
 不在此注册 builder。
 
@@ -10,7 +10,7 @@ server 只负责文件路径解析 (见 config_validate.resolve_resource)。
 from water_barrier import WaterGapAlgorithm, load_calibration
 
 LOADERS = {"water_gap": load_calibration}
-# night_lamp 由 worker 的 NightAdapter 工厂直接构造（见 worker._default_night_adapter）
+# night_lamp 由 worker 的 LampAdapter直接构造（见 worker._default_night_adapter）
 BUILDERS = {"water_gap": WaterGapAlgorithm}
 
 
@@ -22,10 +22,12 @@ def load_calib(name, fp):
     return loader(fp)
 
 
-def create(name, frame_shape, calib, camera_id=""):
+def create(name, frame_shape, calib, camera_id="", *, offset_module=None, wall_clock=None):
     if name == "water_gap" and calib.get("backend") == "yolo":
         from water_barrier.yolo_pipeline import YoloWaterAlgorithm
-        return YoloWaterAlgorithm(frame_shape, calib, camera_id)
+        kwargs={'offset_module':offset_module}
+        if wall_clock is not None:kwargs['wall_clock']=wall_clock
+        return YoloWaterAlgorithm(frame_shape, calib, camera_id,**kwargs)
     if name == "water_gap" and calib.get("backend") == "blocks":
         from water_barrier.online_blocks import BlockAlgorithm
         return BlockAlgorithm(frame_shape,calib,camera_id)

@@ -27,19 +27,23 @@ class YoloWaterAlgorithm:
     cadence = 'per_frame'
 
     def __init__(self, frame_shape, calib=None, camera_id='', *, params=PARAMS,
-                 detector=None, vision=None, wall_clock=time.time):
+                 detector=None, vision=None, wall_clock=time.time, offset_module=None):
         self._p = params.validate()
         self._camera = camera_id
         self._shape = frame_shape
         weight_path = params.inference.weights
+        self._applied_offsets = set()
         self._model_id = f'{weight_path.parent.parent.name}/{weight_path.name}'
         self._model_sha = hashlib.sha256(weight_path.read_bytes()).hexdigest() if weight_path.is_file() else None
         self._clock = wall_clock
         self._store = Store(params,camera_id)
         self._debugger = Debugger(params,self._store)
+        self._offset_module = offset_module
         self._vision = vision or Vision(params)
         self._detector = detector or Detector(params)
-        self._refs = References(params,self._store,self._vision)
+        self._refs = References(params,self._store,self._vision,
+            library=offset_module.references if offset_module is not None else None)
+        self._target_reference = self._refs.view
         self._motion = CameraState(params)
         self._episodes = Episodes(params)
         self._histories = {}
@@ -65,12 +69,14 @@ class YoloWaterAlgorithm:
         self._last_decisions = {}
         self._presence_patches = {}
         self._load_state(self._clock())
+        self._target_reference = getattr(self._refs,'restored_view',self._refs.view)
         logger.info('[{}] YOLO water initialized; parameters={}',camera_id,asdict(params))
 
     def _load_state(self, stamp):
         data = self._store.load(stamp)
         if not data:
             return
+        self._applied_offsets = {tuple(t) for t in data.get('applied_offsets', [])}
         episodes = data.get('episodes',{})
         self._episodes = Episodes(self._p,episodes.get('records'),episodes.get('guard_until',0.0))
         if data.get('model_sha256') != self._model_sha:
@@ -92,7 +98,8 @@ class YoloWaterAlgorithm:
                     self._daylight.pause()
                 self._status = 'alignment_pending'
             else:
-                self._refs = References(self._p,self._store,self._vision)
+                self._refs = References(self._p,self._store,self._vision,
+                    library=self._offset_module.references if self._offset_module else None)
                 self._accumulation = Accumulation(self._p)
             if data.get('motion_state') in (CameraState.DETECT,CameraState.RECOVER) and self._refs.anchor is not None:
                 self._motion.state = data['motion_state']
@@ -102,14 +109,16 @@ class YoloWaterAlgorithm:
                 old = data.get('previous_references') or data['references']
                 self._old_refs = References(self._p,self._store,self._vision)
                 self._old_refs.restore(old,stamp)
-                self._refs = References(self._p,self._store,self._vision)
+                self._refs = References(self._p,self._store,self._vision,
+                    library=self._offset_module.references if self._offset_module else None)
                 self._motion.state = CameraState.REBUILD
                 self._histories = {}
                 self._accumulation = Accumulation(self._p)
                 self._status = 'rebuilding'
         except (KeyError,ValueError,TypeError):
             logger.exception('[{}] invalid reference checkpoint; rebuilding',self._camera)
-            self._refs = References(self._p,self._store,self._vision)
+            self._refs = References(self._p,self._store,self._vision,
+                    library=self._offset_module.references if self._offset_module else None)
             self._histories = {}
             self._accumulation = Accumulation(self._p)
 
@@ -138,7 +147,12 @@ class YoloWaterAlgorithm:
             self._next_align = now
         self._last_step = now
         events = []
-        if self._motion.state != CameraState.NORMAL:
+        if self._offset_module is not None:
+            self._align(frame,now,stamp)
+            if now>=self._next_detect:
+                self._next_detect=self._advance_due(self._next_detect,now)
+                events=self._detect(frame,now,stamp)
+        elif self._motion.state != CameraState.NORMAL:
             if now >= self._next_fast:
                 self._next_fast = now+self._p.timing.fast_s
                 self._fast(frame,now,stamp)
@@ -154,10 +168,10 @@ class YoloWaterAlgorithm:
             'frame_status':self._status,'water_yolo':self.status()})
 
     def status(self):
-        return dict(state=self._motion.state,status=self._status,view=self._refs.view,
+        return dict(state=self._offset_module.state.state if self._offset_module else self._motion.state,status=self._status,view=self._refs.view,
                     model=self._model_id,model_sha256=self._model_sha,
                     baseline_ready=bool(self._refs.boxes),alignment_valid=self._alignment_ok,
-                    jitter_tolerance=self._motion.tolerance,statistics=self._last_statistics,
+                    jitter_tolerance=self._offset_module.state.tolerance if self._offset_module else self._motion.tolerance,statistics=self._last_statistics,
                     daylight=self._is_daylight,initial_gap_indices=self._refs.inferred_indices,
                     accumulation={i:self._accumulation.result(i,self._is_daylight)
                                   for i in self._accumulation.records},episodes=self._episodes.dump(),
@@ -177,6 +191,27 @@ class YoloWaterAlgorithm:
         return quality
 
     def _align(self, frame, now, stamp):
+        if self._offset_module is not None:
+            result = self._offset_module.latest
+            if result is None:
+                self._alignment_ok=False
+                self._status='reference_pending'
+                self._accumulation.pause()
+                return
+            self._alignment_details = dict(result.details.get('alignment',{}),shared=result.to_dict())
+            self._alignment_ok = (result.status == 'aligned' and result.matrix is not None
+                and self._offset_module.pending is None
+                and (not self._refs.boxes or self._target_reference==self._refs.view))
+            if self._alignment_ok:
+                if not self._refs.boxes:self._target_reference=self._refs.view
+                self._matrix = np.asarray(result.matrix, float)
+                if self._refs.boxes:
+                    self._refs.baseline_created = self._refs.last_refresh
+                self._status = 'ok' if self._refs.boxes else 'baseline_pending'
+            else:
+                self._accumulation.pause()
+                self._status = result.status
+            return
         quality = self._quality(frame,stamp)
         self._debugger.record('reference_quality',stamp,quality)
         if self._refs.anchor is None:
@@ -194,7 +229,8 @@ class YoloWaterAlgorithm:
             if quality['ok']:
                 # 到期后只用历史资料尝试迁移，不再直接用于缺失判断。
                 self._old_refs = self._refs
-                self._refs = References(self._p,self._store,self._vision)
+                self._refs = References(self._p,self._store,self._vision,
+                    library=self._offset_module.references if self._offset_module else None)
                 self._finish_reference(frame,now,stamp,quality)
             return
         alignment = self._refs.align(frame)
@@ -243,7 +279,8 @@ class YoloWaterAlgorithm:
                     self._store.record('movement',stamp,dict(view=self._refs.view,role='before'),self._refs.anchor)
                 logger.info('[{}] camera moved; old view {} disabled; {}',self._camera,self._refs.view,details)
                 self._old_refs = self._refs
-                self._refs = References(self._p,self._store,self._vision)
+                self._refs = References(self._p,self._store,self._vision,
+                    library=self._offset_module.references if self._offset_module else None)
                 self._histories = {}
                 self._accumulation = Accumulation(self._p)
                 self._presence_patches = {}
@@ -526,12 +563,90 @@ class YoloWaterAlgorithm:
         return draw_annots(frame,self._annots)
 
     def _checkpoint(self, stamp):
+        if (self._offset_module is not None and self._refs.boxes
+                and self._target_reference and self._target_reference!=self._refs.view):
+            return  # Preserve the old coordinate checkpoint until migration is applied.
         # 只滚动保存当前状态；原始图片、历史记录的生成时间不刷新。
-        self._store.snapshot(stamp,dict(references=self._refs.dump(),
+        references=self._refs.dump()
+        if self._offset_module is not None:references['view']=self._target_reference or self._refs.view
+        self._store.snapshot(stamp,dict(references=references,
              episodes=self._episodes.dump(),histories={i:h.dump() for i,h in self._histories.items()},
              motion_state=self._motion.state,previous_references=self._old_refs.dump() if self._old_refs else None,
-             policy_version=3,accumulation=self._accumulation.dump(),
+             policy_version=3,applied_offsets=[list(t) for t in self._applied_offsets],accumulation=self._accumulation.dump(),
              lighting=self._daylight.dump(),presence_patches=self._presence_patches,
              daylight=self._is_daylight,daylight_streak=self._daylight.streak,
              model_sha256=self._model_sha))
         self._last_checkpoint = stamp
+
+    def apply_offset(self, result, corrected_boxes=None):
+        """External owner commits the shared reference, then migrates water slots.
+
+        corrected_boxes maps existing identities to independently validated boxes.
+        Unmatched/offscreen slots remain conservative unknown observations.
+        """
+        if self._offset_module is None or result.status != 'committed':
+            raise ValueError('A committed external offset is required')
+        if result.camera_id != self._camera:
+            raise ValueError('Offset camera mismatch')
+        token = (result.task_id, result.version)
+        applied = getattr(self, '_applied_offsets', set())
+        if token in applied:
+            return False
+        if self._refs.view != result.new_reference:
+            raise ValueError('Shared reference has not committed this version')
+        if self._target_reference==result.new_reference:
+            self._applied_offsets.add(token)
+            return False
+        if self._target_reference and self._target_reference!=result.old_reference:
+            raise ValueError('Water target reference cannot skip a migration')
+        boxes = (warp_boxes(self._refs.boxes, np.asarray(result.matrix, float))
+                 if result.matrix is not None else [])
+        if result.matrix is None:
+            self._refs.rows=[]
+            self._refs.identities=[]
+            self._refs.inferred_indices=[]
+            self._refs.gap_scan_complete=False
+            self._refs._candidates=[]
+            self._episodes.guard_new_view(result.checked_at)
+        corrections = corrected_boxes or {}
+        for index, identity in enumerate(self._refs.identities):
+            if identity in corrections:
+                box = np.asarray(corrections[identity],float)
+                if box.shape != (4,) or not np.isfinite(box).all() or box[2]<=box[0] or box[3]<=box[1]:
+                    raise ValueError('Invalid corrected water box')
+                boxes[index] = box.tolist()
+        self._refs.boxes = boxes
+        self._target_reference=result.new_reference
+        self._matrix = np.eye(3)
+        self._histories = {}
+        self._presence_patches = {}
+        self._previous_missing = set()
+        self._accumulation.pause()
+        self._refs.baseline_created = result.checked_at
+        self._alignment_ok = False  # Revalidate on the next frame before absence decisions.
+        applied.add(token)
+        self._applied_offsets = applied
+        self._store.record('baselines',result.checked_at,self._refs.baseline_dump())
+        self._checkpoint(result.checked_at)
+        return True
+
+    def apply_shared_offset(self,result):
+        return self.apply_offset(result)
+
+    def offset_feedback(self,result,frame):
+        from camera_motion.contracts import Feedback
+        if result.matrix is None or not self._refs.boxes:return None
+        boxes=self._detector.detect(frame)
+        predicted=warp_boxes(self._refs.boxes,np.asarray(result.matrix,float))
+        matches,_=match_boxes(predicted,boxes,self._p.matching)
+        if len(matches)<4:return None
+        old=[];observed=[]
+        for i,j in matches.items():
+            old.append(((np.asarray(self._refs.boxes[i][:2])+self._refs.boxes[i][2:4])/2).tolist())
+            observed.append(((np.asarray(boxes[j][:2])+boxes[j][2:4])/2).tolist())
+        return Feedback(self._camera,result.task_id,'water_gap',result.old_reference,
+            result.new_reference,result.version,result.frame_id,tuple(map(tuple,old)),tuple(map(tuple,observed)))
+
+    @property
+    def offset_reference(self):
+        return self._target_reference

@@ -1,123 +1,84 @@
-﻿# =============================================================================
-# BarriGuard 生产运行时配置（Wave 0 冻结 schema）
-# =============================================================================
-# 唯一事实源：显式声明“哪些相机跑哪些算法、用什么标定、何时跑、多久出一次结果、
-# 如何上报”。缺键/未知键应启动失败（校验由 Wave 1 config loader 实现），
-# 不得回落到代码默认值或静默跳过。
-#
-# 三层边界：
-#   本文件 / runtime + schedule + callback + cameras  -> “跑什么/何时跑/输出给谁”
-#   算法业务策略（rollowing confidence/min_interval/hold/reconfirm） -> 本文件
-#   算法数据资产（水马 ROI/road 几何） -> 算法包 calibration 文件（只给路径）
-#
-# 红线（写入所有实施任务书）：
-#   ① series_cap=600 只是 benchmark，不是 production 默认（此处为 null=全序列）
-#   ② online candidate discovery 与 golden 必须独立量化，不得用 golden 候选集证明等价
-#   ③ Report 对旧 Algorithm.step 必须 additive（旧算法无需修改）
-#   ④ NightSession 严格按夜隔离；finalize/callback 失败不得污染下一夜
-# =============================================================================
+# 灯具已接入 v7 / 320；当前保留离线验收状态，实时启用由 enabled 控制。
 version: 1
-
 runtime:
-  host: "0.0.0.0"                 # 容器内必须 0.0.0.0
+  host: 0.0.0.0
   port: 8000
   jpeg_quality: 80
-  log_level: "warning"
-  memory_budget_mb_per_camera: 500  # manifest-only, optional
-  output_dir: "data"               # 落盘根目录；docker 挂载 ./data:/app/data
-  persist_images: false            # 不落图片，仅保留 JSON 交换格式
-  retention_hours: 48              # 定时清理：删除落盘中超过 48h 的文件
-
+  log_level: warning
+  memory_budget_mb_per_camera: 500
+  output_dir: data
+  persist_images: false
+  retention_hours: 48
 schedule:
-  timezone: "Asia/Shanghai"
-  day_start: "07:00"
-  day_end: "17:00"
-  night_start: "20:00"
-  night_end: "03:00"              # 可跨零点
-  report_at: "07:00"              # 夜灯热力图 finalize/推送
-
+  timezone: Asia/Shanghai
+  day_start: 07:00
+  day_end: '17:00'
+  night_start: '20:00'
+  night_end: 03:00
+  report_at: 07:00
 callback:
   enabled: true
-  url: "http://192.168.1.24:6034/protal/ai-alarm/webhook"
+  url: http://192.168.1.24:6034/protal/ai-alarm/webhook
   timeout_s: 10
-  retries: 2                      # 失败后额外重试次数
-  queue_size: 64                  # 必须有界
-  image_field: "frame_base64"
-
+  retries: 2
+  queue_size: 64
+  image_field: frame_base64
 cameras:
-  - id: "1749"
-    name: "Mobile Camera 1749"
-    rtsp_url: "rtsp://118.140.234.166:8554/dahua1002490"
-    enabled: true
-    algorithms:
-      water_gap:
-        enabled: true
-        backend: yolo
-        schedule: day
-        status: ready
-        report_interval_s: 3600
-
-      night_lamp:
-        lamp_checks:
-          enabled: true
-          polygons: roi_configs/lamps/1749.json
-          heatmap_ratio: 0.05
-          hotspot_strength_min: 0.10
-          lit_hours: 1
-        enabled: true
-        schedule: night
-        status: ready                 # manifest-only
-        night_gate: {enter_threshold: 100.0, exit_threshold: 120.0, persistence: 2}
-        lamp_roi: {calibration: "roi_configs/1749.yaml",
-                   dilate_px: 30, up_px: 40}
-        sampling: {interval_ms: 160}          # Phase 1 起点，非最终真理
-        # max_candidates 依赖 anchor=wall（时序逐桶重建，内存有界）；
-        # 切回 anchor=stream 整夜单序列会随该值线性放大内存。
-        memory: {max_candidates: 200, series_cap: null}   # null=全序列；600 仅 benchmark
-        baseline: {frames: 60, warmup_s: 600, ema_half_life_s: 1800}
-        periodicity: {enabled: false, period_step: 2, lag_lo_s: 0.3, lag_hi_s: 7.0,
-                      peak_floor: 0.2, min_peaks: 3, gap_tol: 1, onset_min: 20}
-        # Compatibility only: pulse settings are inactive in regional two-state mode.
-        pulse: {amplitude_min: 20.0, rise_max_s: 0.48, width_max_s: 1.2,
-                return_ratio: 0.25, min_duration_s: 20.0, max_gap_s: 4.0}
-        alignment: {min_cc: 0.5, on_low_cc: degraded}
-        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 300, anchor: wall, record_local: true, record_root: /app/data/night_offline, video_days: 3, result_days: 7}
-
-  - id: "1750"
-    name: "Mobile Camera 1750"
-    rtsp_url: "rtsp://118.140.234.166:8554/dahua1002491"
-    enabled: true
-    algorithms:
-      water_gap:
-        enabled: true
-        backend: yolo
-        schedule: day
-        status: ready
-        report_interval_s: 3600
-
-      night_lamp:
-        lamp_checks:
-          enabled: true
-          polygons: roi_configs/lamps/1750.json
-          heatmap_ratio: 0.05
-          hotspot_strength_min: 0.10
-          lit_hours: 1
-        enabled: true                 # 明确启用，不得因 pending 静默关闭
-        schedule: night
-        status: calibration_pending   # 8 盏 active，参数待重标（manifest-only）
-        night_gate: {enter_threshold: 140.0, exit_threshold: 150.0, persistence: 2}
-        lamp_roi: {calibration: "roi_configs/1750.yaml",
-                   dilate_px: 30, up_px: 40}
-        sampling: {interval_ms: 160}
-        # max_candidates 依赖 anchor=wall（时序逐桶重建，内存有界）；
-        # 切回 anchor=stream 整夜单序列会随该值线性放大内存。
-        memory: {max_candidates: 200, series_cap: null}
-        baseline: {frames: 60, warmup_s: 600, ema_half_life_s: 1800}
-        periodicity: {enabled: false, period_step: 2, lag_lo_s: 0.3, lag_hi_s: 7.0,
-                      peak_floor: 0.2, min_peaks: 3, gap_tol: 1, onset_min: 20}
-        # Compatibility only: pulse settings are inactive in regional two-state mode.
-        pulse: {amplitude_min: 20.0, rise_max_s: 0.48, width_max_s: 1.2,
-                return_ratio: 0.25, min_duration_s: 20.0, max_gap_s: 4.0}
-        alignment: {min_cc: 0.5, on_low_cc: degraded}
-        overnight: {enabled: true, cadence_minutes: 60, burst_seconds: 300, anchor: wall, record_local: true, record_root: /app/data/night_offline, video_days: 3, result_days: 7}
-
+- id: '1749'
+  name: Mobile Camera 1749
+  rtsp_url: rtsp://118.140.234.166:8554/dahua1002490
+  enabled: true
+  algorithms:
+    water_gap:
+      enabled: true
+      backend: yolo
+      schedule: day
+      status: ready
+      report_interval_s: 3600
+    night_lamp:
+      enabled: false
+      schedule: night
+      status: calibration_pending
+      detector:
+        weights: ../models/lamp_v7/best.pt
+        device: cpu
+        confidence: 0.35
+        imgsz: 320
+        detect_interval_s: 0.16
+        visibility: background
+      observation:
+        cadence_s: 1800.0
+        effective_s: 300.0
+        deadline_s: 1500.0
+        normal_pulses: 15
+        failure_span_s: 10800.0
+        failure_windows: 6
+- id: '1750'
+  name: Mobile Camera 1750
+  rtsp_url: rtsp://118.140.234.166:8554/dahua1002491
+  enabled: true
+  algorithms:
+    water_gap:
+      enabled: true
+      backend: yolo
+      schedule: day
+      status: ready
+      report_interval_s: 3600
+    night_lamp:
+      enabled: false
+      schedule: night
+      status: calibration_pending
+      detector:
+        weights: ../models/lamp_v7/best.pt
+        device: cpu
+        confidence: 0.35
+        imgsz: 320
+        detect_interval_s: 0.16
+        visibility: background
+      observation:
+        cadence_s: 1800.0
+        effective_s: 300.0
+        deadline_s: 1500.0
+        normal_pulses: 15
+        failure_span_s: 10800.0
+        failure_windows: 6

@@ -2,13 +2,17 @@
 
 ## 当前组成
 
-水马为V6 YOLO缺失检测，灯光沿用BarriGuard的poly/circle标定及闪烁算法。只改水马后端和必要接入，不修改灯光识别逻辑。
+水马为V6 YOLO缺失检测；灯具使用固定v7权重定位、完整闪烁计数和独立业务窗口。两者共用偏移模块和参考图库，旧灯光poly/circle、热力图及周期性后端已移除。灯具跨视角旧ID迁移暂缓，不把预测位置当作已验证身份。
 
 模型在`models/water_barrier_v6/best.pt`；参数统一在`deploy/app/water_barrier/yolo_params.py`。默认CPU，调试总开关`Debug.enabled=true`。服务器不需要训练数据、旧模型或本地测试状态。
 
 ## 第一次服务器测试
 
-先clone选定的GitHub仓库和分支。仓库地址及分支尚待确认，本目录未自动连接或推送。
+仓库为 `https://github.com/LiuYH-InSAR/BarriGuard.git`，发布分支为 `work/current-water-lamp`（本地 `main` 跟踪该分支）。服务器应clone该分支或切换到该分支后更新，不使用旧 `master`：
+
+```bash
+git clone --branch work/current-water-lamp https://github.com/LiuYH-InSAR/BarriGuard.git
+```
 
 ```bash
 cd <仓库目录>/deploy
@@ -16,7 +20,7 @@ cp config.test.yaml config.local.yaml
 cp .env.example .env
 ```
 
-按服务器情况检查`config.local.yaml`的视频流、回调地址、灯光录像路径。测试模板关闭callback，其他算法设置与生产配置相同。两份私有文件均不提交GitHub；后续pull不会覆盖。
+按服务器情况检查`config.local.yaml`的视频流、回调地址和输出目录。测试模板关闭callback，灯具仍禁用；在服务器试运行时将所需摄像头的 `night_lamp.enabled` 改为 `true`，保留v7权重路径、320输入和观察参数。两份私有文件均不提交GitHub；后续pull不会覆盖。
 
 ```bash
 docker compose build --pull barriguard
@@ -81,6 +85,10 @@ docker compose up -d --no-build barriguard
 
 历史水马资产生成满72小时后按周期清理，停用参考不立即删除。`current.json`保存当前状态与持续事件去重，不按历史图片清理。日志不纳入水马72小时规则。
 
-灯光仍沿用原策略：`data/night_offline/videos/`保留3天，`results/`保留7天；本次不改变灯光清理配置。
+灯具已统一为 v9c 新方案，已有本地候选权重；配置在验收前保持禁用。启用、权重挂载和 output/lamp_state 七天历史清理见 PRODUCTION_WIRING.md。
 
 suspect本身不推送；符合资格的候选升级error后才报警。小目标、背景证据不足、弱存在和光照待确认不会直接累计成error。
+
+灯具启用：仓库模板保持 `enabled=false`；服务器受控试运行通过私有 `config.local.yaml` 开启，开始时保持callback关闭。镜像已包含 `models/lamp_v7/best.pt`，无需额外挂载；仅需替换该权重时，设置 `BARRIGUARD_LAMP_WEIGHTS_FILE` 后使用可选的 `docker-compose.lamp.yml`。公共参考状态位于 `output/camera_motion`，灯具状态位于 `output/lamp_state`，默认compose已持久化。
+
+正常为同一周期15次可信完整闪烁，无300秒的正向门槛；零闪证据至少300有效秒。未通过者继续到25分钟截止，每30分钟重开。03:00停止采样，07:00统一出图，状态按绿/红/灰显示。灰色是观察或身份不足，不能据此判坏。发布前合成时钟测试覆盖跨夜、恢复、空窗口及调度边界；真实整夜、服务器双路性能与网络解码仍需试运行验收。

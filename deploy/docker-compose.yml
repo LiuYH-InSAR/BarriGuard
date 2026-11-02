@@ -18,6 +18,8 @@ services:
       - ../data:/app/data
       - ../output/water_yolo:/app/output/water_yolo
       - ../output/model_settings:/app/output/model_settings
+      - ../output/camera_motion:/app/output/camera_motion
+      - ../output/lamp_state:/app/output/lamp_state
     cpus: "${BARRIGUARD_CPUS:-2}"
     mem_limit: ${BARRIGUARD_MEMORY:-4g}
     restart: unless-stopped

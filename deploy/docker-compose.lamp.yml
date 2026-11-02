@@ -1,0 +1,5 @@
+# Optional override for the packaged v7 weight. Keep detector.imgsz at 320.
+services:
+  barriguard:
+    volumes:
+      - ${BARRIGUARD_LAMP_WEIGHTS_FILE:?Set the local v7 lamp weight path}:/app/models/lamp_v7/best.pt:ro
