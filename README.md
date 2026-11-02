@@ -6,11 +6,11 @@
 
 - [生产接线与灯具启用](PRODUCTION_WIRING.md)
 - [完整方案](LAMP_DETECTION_PLAN.md)
-- [当前实现状态](IMPLEMENTATION_STATUS.md)
-- [完成版发布复核](RELEASE_REVIEW_20261102.md)
 - [服务器部署](SERVER_DEPLOYMENT.md)
 - [上传索引](UPLOAD_INDEX.md)
 - [本地资料与备份](NOT_UPLOAD_INDEX.md)
+
+当前目录保留 `deploy/`（源码、配置和测试）、`models/`（V6和v7选定权重）、部署与功能说明、依赖和发布校验文件。训练数据、回放、标注、本地缓存及历史开发记录已完整归入 `tmp/development_cleanup_20261102_154735/`，不上传GitHub或进入Docker构建；新旧位置及最新结果图入口见本地资料索引。
 
 水马参数入口为 deploy/app/water_barrier/yolo_params.py，权重为 models/water_barrier_v6/best.pt；灯具推理参数和观察规则位于配置中的 detector 与 observation。
 

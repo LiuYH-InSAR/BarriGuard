@@ -12,6 +12,7 @@ import cv2 as cv
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[2]
+from local_test_support import OFFLINE
 sys.path.insert(0,str(ROOT/'deploy/app'))
 from camera_motion.service import OffsetModule
 from camera_motion.params import MotionParams
@@ -363,9 +364,9 @@ class RegistrationPause(unittest.TestCase):
 
 
 class ExtractedVisionParity(unittest.TestCase):
-    @unittest.skipUnless((ROOT/'training/lamps/optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
+    @unittest.skipUnless((OFFLINE/'optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
     def test_compact_verified_source_with_diffuse_halo_matches_offline_oracle(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from optical_fixture_v9 import OpticalResolver as Offline
         from night_lamp.adaptive.optical_fixture_v9 import OpticalResolver as Production
         a,b=Offline(),Production()
@@ -382,9 +383,9 @@ class ExtractedVisionParity(unittest.TestCase):
         self.assertTrue(proofs)
         self.assertTrue(all(p['ownership_basis']=='verified_compact_core' and p['inside_variation_fraction']<.7 for p in proofs))
 
-    @unittest.skipUnless((ROOT/'training/lamps/exposure_recovery.py').exists(),'offline oracle is intentionally not deployed')
+    @unittest.skipUnless((OFFLINE/'exposure_recovery.py').exists(),'offline oracle is intentionally not deployed')
     def test_photometric_recovery_and_post_reset_calibration_match_offline_oracle(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from exposure_recovery import RecoverableFlashSignal as Offline
         from night_lamp.adaptive.exposure_recovery import RecoverableFlashSignal as Production
         signals=[Offline(),Production()];changed=False
@@ -405,7 +406,7 @@ class ExtractedVisionParity(unittest.TestCase):
         self.assertTrue(changed)
 
     def variant_parity(self,established=False):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from optical_fixture_v9 import OpticalResolver as Offline
         from night_lamp.adaptive.optical_fixture_v9 import OpticalResolver as Production
         a,b=Offline(),Production()
@@ -425,15 +426,15 @@ class ExtractedVisionParity(unittest.TestCase):
         kind='established_emitter_body_variant' if established else 'proven_fixture_body_variant'
         self.assertTrue(all(p['proof_kind']==kind and p['parent_hits']==1 for p in proofs))
 
-    @unittest.skipUnless((ROOT/'training/lamps/optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
+    @unittest.skipUnless((OFFLINE/'optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
     def test_proven_fixture_body_variant_matches_oracle_and_keeps_truthful_hits(self):self.variant_parity()
 
-    @unittest.skipUnless((ROOT/'training/lamps/optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
+    @unittest.skipUnless((OFFLINE/'optical_fixture_v9.py').exists(),'offline oracle is intentionally not deployed')
     def test_established_emitter_reverification_matches_offline_oracle(self):self.variant_parity(established=True)
 
-    @unittest.skipUnless((ROOT/'training/lamps/adaptive_v9.py').exists(),'offline oracle is intentionally not deployed')
+    @unittest.skipUnless((OFFLINE/'adaptive_v9.py').exists(),'offline oracle is intentionally not deployed')
     def test_extracted_defaults_match_frozen_v9_with_identical_backend_and_frames(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from adaptive_v9 import LampPipelineV9 as Offline
         a=Offline(Backend(),vision=Vision());b=LampPipelineV9(Backend(),vision=Vision())
         base=np.random.default_rng(13).integers(20,100,(128,192,3),dtype=np.uint8)

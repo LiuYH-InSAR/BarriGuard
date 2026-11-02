@@ -9,6 +9,7 @@ import cv2 as cv
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[2]
+from local_test_support import OFFLINE
 sys.path.insert(0,str(ROOT/'deploy/app'))
 from night_lamp.quality import StreamQuality
 from night_lamp.adaptive.adaptive_tracking_v5 import BackgroundAnchor
@@ -66,9 +67,9 @@ class QualityReuse(unittest.TestCase):
 
 
 class ExactGeometry(unittest.TestCase):
-    @unittest.skipUnless((ROOT/'training/lamps/adaptive_v7.py').exists(),'local offline oracle not deployed')
+    @unittest.skipUnless((OFFLINE/'adaptive_v7.py').exists(),'local offline oracle not deployed')
     def test_far_neighbor_filter_preserves_every_support_pixel(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from adaptive_v7 import SupportEpochSignal as Original
         from night_lamp.adaptive.adaptive_v7 import SupportEpochSignal
         rng=np.random.default_rng(14)
@@ -79,9 +80,9 @@ class ExactGeometry(unittest.TestCase):
             old.neighbor_centers=new.neighbor_centers=points
             np.testing.assert_array_equal(old.desired_support(box),new.desired_support(box))
 
-    @unittest.skipUnless((ROOT/'training/lamps/adaptive_tracking_v5.py').exists(),'local offline oracle not deployed')
+    @unittest.skipUnless((OFFLINE/'adaptive_tracking_v5.py').exists(),'local offline oracle not deployed')
     def test_vectorized_background_exclusions_equal_original_on_many_shapes(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from adaptive_tracking_v5 import BackgroundAnchor as Original
         rng=np.random.default_rng(79);image=rng.integers(0,255,(220,320),dtype=np.uint8)
         for i in range(80):
@@ -94,9 +95,9 @@ class ExactGeometry(unittest.TestCase):
             frame=np.clip(image.astype(float)+rng.normal(0,3,image.shape),0,255).astype(np.uint8)
             self.assertEqual(new.evaluate(frame,box,neighbors),old.evaluate(frame,box,neighbors))
 
-    @unittest.skipUnless((ROOT/'training/lamps/optical_fixture_v9.py').exists(),'local offline oracle not deployed')
+    @unittest.skipUnless((OFFLINE/'optical_fixture_v9.py').exists(),'local offline oracle not deployed')
     def test_cached_geometry_is_the_same_rule_and_bounded(self):
-        sys.path.insert(0,str(ROOT/'training/lamps'))
+        sys.path.insert(0,str(OFFLINE))
         from optical_fixture_v9 import potential_fixture as original
         rng=np.random.default_rng(11)
         for _ in range(1000):

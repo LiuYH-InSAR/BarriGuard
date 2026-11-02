@@ -2,7 +2,7 @@
 
 服务器通过 Git 获取源码，再构建容器。
 
-当前上传目标为`origin/work/current-water-lamp`（本地`main`的既有上游），保留旧`master`。完成版复核见`RELEASE_REVIEW_20261102.md`，上传不自动启用服务器灯具。
+当前上传目标为`origin/work/current-water-lamp`（本地`main`的既有上游），保留旧`master`。上传前整理目录、验证、备份，再提交推送；上传不自动启用服务器灯具。
 
 | 路径 | 用途 |
 |---|---|
@@ -18,6 +18,9 @@
 | models/lamp_v7/ | 已选灯具 v7 权重、320输入配置与校验信息 |
 | deploy/tests/ | 水马、共享模块和新灯具回归 |
 | check_deploy.py、deploy_manifest.json | 发布自检和逐文件校验 |
-| 根目录 Markdown 文档、pyproject.toml、uv.lock | 方案、操作和依赖声明 |
+| README、LAMP_DETECTION_PLAN、PRODUCTION_WIRING、SERVER_DEPLOYMENT、上传／本地索引 | 当前方案、部署操作及目录入口 |
+| pyproject.toml、uv.lock | 依赖声明与锁定 |
 
 除选定的 models/lamp_v7/best.pt 外，其他训练权重、训练视频、人工标注素材、tmp 备份、data/output、日志、私有 .env 和 config.local.yaml 不上传。
+
+整理后的训练、标注、回放、缓存和开发记录实际位于`tmp/development_cleanup_20261102_154735/`；旧备份、原始录像及此前归档留在原tmp子目录，不合并、不覆盖。历史`IMPLEMENTATION_STATUS.md`与`RELEASE_REVIEW_20261102.md`退出根目录和当前上传清单，归入该目录的`development_notes/`。回归测试属于当前代码验证，保留`deploy/tests/`。

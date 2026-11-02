@@ -7,8 +7,9 @@ import unittest
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[2]
+from local_test_support import OFFLINE
 sys.path.insert(0,str(ROOT/'deploy/app'))
-sys.path.insert(0,str(ROOT/'training/lamps'))
+sys.path.insert(0,str(OFFLINE))
 from night_lamp.adaptive.search_plan import plan_search
 from night_lamp.adaptive.adaptive_prototype import grid
 from night_lamp.adaptive.adaptive_v5 import AdaptiveV5

@@ -1,4 +1,35 @@
-# 不提交GitHub的本地索引
+# 本地资料与备份索引
+
+## 2026-11-02 本次整理
+
+当前项目根目录保留生产源码、选定模型、测试、配置、依赖与现行说明。开发材料完整移动到[本地归档目录](tmp/development_cleanup_20261102_154735/)，没有删除原始材料或覆盖此前备份；tmp由Git和Docker忽略。以下链接仅供本地使用。
+
+| 整理前 | 当前本地位置 |
+|---|---|
+| `training/`（工具、样本、训练结果及回放报告） | `tmp/development_cleanup_20261102_154735/training/` |
+| `Lamps_labeling/`（标注原图与poly） | `tmp/development_cleanup_20261102_154735/Lamps_labeling/` |
+| `Ultralytics/`、`output/`（库配置及缓存） | 归档目录下同名子目录 |
+| `IMPLEMENTATION_STATUS.md`、`RELEASE_REVIEW_20261102.md` | 归档目录的`development_notes/` |
+| 生产接线文档的完整历史记录 | `development_notes/PRODUCTION_WIRING_before_cleanup.md` |
+| `deploy/`内原有`__pycache__/` | 归档目录的`runtime_caches/`，按原相对位置保留 |
+
+移动清单：[move_plan.json](tmp/development_cleanup_20261102_154735/move_plan.json)；校验记录：[MOVE_VERIFIED.json](tmp/development_cleanup_20261102_154735/MOVE_VERIFIED.json)。逐项核对文件数量、大小、修改时间、文件ID和相对路径，生产运行源码保持原样。
+
+- [最新15分钟完整回放、结果图和07:00模拟](tmp/development_cleanup_20261102_154735/training/lamps/pulse_first_20261102/index.html)
+- [人工灯具标注目录](tmp/development_cleanup_20261102_154735/Lamps_labeling/)
+- 原始双路15分钟录像：`tmp/lamp_night_job_20261030/recording/`，未移动。
+- 早期拉流材料：`tmp/development_archive_20261027/tmp/yolo错误模型/tmp/yolo_samples/`，未移动。
+- 先前完成版备份：`tmp/backups/completed_lamp_v7_20261102_150436/`及`completed_lamp_v7_20261102_151848/`，未改动。
+- 整理后完成版备份：`tmp/backups/organized_completed_v7_20261102_*/`，附`MANIFEST.json`和`RESTORE.md`。
+- 整理后检查及上传记录：`tmp/organized_release_20261102/`。
+
+离线脚本和样本中的历史绝对路径按原样保留。后续再次训练时，先恢复或重配离线开发根目录；不要直接将归档当成已重定位的训练环境。生产运行不读取该归档。
+
+本地回归若需要对照归档中的离线算法，可设置测试专用环境变量`BARRIGUARD_OFFLINE_TEST_DIR`为归档的`training/lamps`绝对路径，再运行`python -B -m unittest discover -s deploy/tests -v`。此开关只在测试中读取，服务器没有离线资料时会跳过对应可选对照用例。
+
+## 早期归档记录
+
+以下为2026-10-27整理及更早完成版的历史索引，本次未再次移动这些tmp目录。
 
 开发资料完整保留在`tmp/development_archive_20261027/`，没有删除，由Git及Docker忽略规则排除。
 

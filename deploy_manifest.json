@@ -33,13 +33,6 @@
       "configurable": false
     },
     {
-      "path": "IMPLEMENTATION_STATUS.md",
-      "hash_mode": "text_lf",
-      "configurable": false,
-      "bytes": 24909,
-      "sha256": "0f98d7a01e5d2dbbcf61eecb7700a253d0ad1da0f325d1362212c6a071636445"
-    },
-    {
       "path": "LAMP_DETECTION_PLAN.md",
       "hash_mode": "text_lf",
       "configurable": false,
@@ -48,31 +41,24 @@
     },
     {
       "path": "NOT_UPLOAD_INDEX.md",
-      "bytes": 2496,
+      "bytes": 5203,
       "hash_mode": "text_lf",
-      "sha256": "ab489825394ea692db7e7b1daf01da1ae14d68c8832dcb3a52467acfa2dd08ca",
+      "sha256": "dfc2f6a541364925be8c0d17cfa49e5ac153797b07499c47a2e58ec33a26bb58",
       "configurable": false
     },
     {
       "path": "PRODUCTION_WIRING.md",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 10903,
-      "sha256": "42d4c2f881339cae5c4cfda2d82ddcf45e907605719140c91d927a4d8becb8c5"
+      "bytes": 9384,
+      "sha256": "b752e6b8497cbcbfcf9b7249436932aba03245af128cff7541c84cc84cf56ae7"
     },
     {
       "path": "README.md",
-      "bytes": 1753,
+      "bytes": 2030,
       "hash_mode": "text_lf",
-      "sha256": "565a30aed5c3f03b6ab51d0d6971909f1cd077ab3e370cf79a28005a2a00a243",
+      "sha256": "145b81e1c8bcd5e3566cec41f90d87c7e8a2b6b072ffb6e3d56972d000337216",
       "configurable": false
-    },
-    {
-      "path": "RELEASE_REVIEW_20261102.md",
-      "hash_mode": "text_lf",
-      "configurable": false,
-      "bytes": 4001,
-      "sha256": "2d5bcaed9b4f0c2879619857ae91d98d6eb03fcc78c2b2e5a30a32cb2ecc77a0"
     },
     {
       "path": "SERVER_DEPLOYMENT.md",
@@ -83,9 +69,9 @@
     },
     {
       "path": "UPLOAD_INDEX.md",
-      "bytes": 1473,
+      "bytes": 2001,
       "hash_mode": "text_lf",
-      "sha256": "a09772245303e87369c6454152fa28bc160a06be7e5986b79506f396418ab6f1",
+      "sha256": "658d17a7ef2fe3214782bcfe41777d3c5c13099dd47c611e9c354aed50a1e210",
       "configurable": false
     },
     {
@@ -684,11 +670,18 @@
       "configurable": false
     },
     {
+      "path": "deploy/tests/local_test_support.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 292,
+      "sha256": "f64c92787068186f97d9038f039a9730c9045502ebfc6a488f838685b4fdce20"
+    },
+    {
       "path": "deploy/tests/test_adaptive_runtime.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 26360,
-      "sha256": "dc58fb88861770746fb3806508e08fc5783b87ca613ac38fbc77ea9911e0d3a2"
+      "bytes": 26283,
+      "sha256": "9c2bf60390ddb3f11c2c8a4e23a1ddda4d2defd516de2352d52d51c208691f92"
     },
     {
       "path": "deploy/tests/test_lamp_observability.py",
@@ -701,8 +694,8 @@
       "path": "deploy/tests/test_lamp_performance.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 5851,
-      "sha256": "02d6e462eba114fe92a97d6c7fd3b4584eecb15df57a9c760bec69287a6268dd"
+      "bytes": 5812,
+      "sha256": "03a69540c434d3cff754a55587716c3b5e9ae5a53cd7c5670ffb83b57eee07a2"
     },
     {
       "path": "deploy/tests/test_lamp_pulse_first.py",
@@ -736,8 +729,8 @@
       "path": "deploy/tests/test_lamp_search_plan.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 5765,
-      "sha256": "0b3a76aad2304c5c2d90a35c291d582bef579414f676d0c1f560b708dc3e9796"
+      "bytes": 5790,
+      "sha256": "9a6f58bdbd5946dd3b46614d63ffb70e761e8885cfa245bede834a53d37159d5"
     },
     {
       "path": "deploy/tests/test_lamp_v7_configuration.py",
