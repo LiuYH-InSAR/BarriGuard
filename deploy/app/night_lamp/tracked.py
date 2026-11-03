@@ -80,6 +80,8 @@ class Lamp:
     history: list = field(default_factory=list)
     body_box: list | None = None
     aliases: list = field(default_factory=list)
+    spatial: dict = field(default_factory=dict)
+    presence: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -145,7 +147,8 @@ class LampMonitor:
             self.bucket = None
         if wall_ts < bucket+self.params.deadline_s and self.bucket is None:
             # Do not reopen a bucket already finalized at its deadline.
-            if not self.results or self.results[-1]['bucket'] != bucket:
+            if (not self.results or self.results[-1]['bucket'] != bucket
+                or self.results[-1].get('reference',self.reference)!=self.reference):
                 self.bucket = bucket
                 self.observations = {key:PulseCounter() for key in self.lamps}
                 self.accepted = {}
@@ -231,7 +234,7 @@ class LampMonitor:
                      reference=lamp.reference,lamp_id=key)
             lamp.history.append(row);lamp.history=lamp.history[-336:]
             rows.append(row)
-        self.results.append(dict(bucket=self.bucket,ended=stamp,lamps=rows))
+        self.results.append(dict(bucket=self.bucket,ended=stamp,reference=self.reference,lamps=rows))
         self.results=self.results[-336:]
 
     def status(self,key,wall_ts,*,require_observable=True):

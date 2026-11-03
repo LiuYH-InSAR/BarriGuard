@@ -23,17 +23,30 @@ class LampParams:
     max_center_ratio: float = .6
     min_size_ratio: float = .45
     max_size_ratio: float = 2.2
+    presence_period_s: float = 30.
+    presence_min_body_px: float = 10.
+    missing_windows: int = 2
+    missing_min_checks: int = 10
+    missing_max_age_s: float = 86400.
+    migration_min_samples: int = 12
+    migration_min_span_s: float = 3.
+    migration_error_px: float = 3.
 
     def __post_init__(self):
         if not all(isfinite(getattr(self,f.name)) for f in fields(self)):
             raise ValueError('Lamp parameters must be finite')
         if any(isinstance(getattr(self,k),bool) or not isinstance(getattr(self,k),int)
-               for k in ('normal_pulses','failure_windows','discovery_hits')):
+               for k in ('normal_pulses','failure_windows','discovery_hits','missing_windows','missing_min_checks','migration_min_samples')):
             raise ValueError('Lamp counts must be integers')
         if not (self.candidate_ttl_s>0 and 0<=self.min_iou<=1
                 and 0<self.center_ratio<=self.max_center_ratio
                 and 0<self.min_size_ratio<=self.max_size_ratio):
             raise ValueError('Invalid lamp candidate or matching thresholds')
+        if not (self.presence_period_s>0 and self.presence_min_body_px>=6
+                and self.missing_windows>=2 and self.missing_min_checks>=3
+                and self.missing_max_age_s>self.cadence_s and self.migration_min_samples>=3
+                and self.migration_min_span_s>0 and self.migration_error_px>0):
+            raise ValueError('Invalid lamp migration or physical-presence thresholds')
         if not (0 < self.effective_s <= self.deadline_s < self.cadence_s
                 and self.normal_pulses > 0 and self.failure_windows > 0
                 and self.failure_span_s == self.failure_windows*self.cadence_s

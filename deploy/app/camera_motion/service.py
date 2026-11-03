@@ -3,7 +3,7 @@
 Migration candidates never replace the active library before commit. Feedback
 must already be expressed in the candidate reference coordinates.
 """
-from dataclasses import replace
+from dataclasses import replace,asdict
 from uuid import uuid4
 import cv2 as cv
 import numpy as np
@@ -60,7 +60,7 @@ class OffsetModule:
                  overlap=self._overlap(alignment.matrix,frame.shape[:2]) if valid else None))
         return self.latest
 
-    def begin_migration(self, frame, stamp, frame_id, timeout_s=1500.):
+    def begin_migration(self, frame, stamp, frame_id, timeout_s=1500.,source_ts=None):
         if self.pending is not None:
             raise RuntimeError('Migration already pending')
         if self.references.anchor is None or timeout_s <= 0:
@@ -69,6 +69,9 @@ class OffsetModule:
         if not quality['ok']:
             raise ValueError('Candidate reference quality rejected')
         alignment = self.references.align(frame)
+        provisional=not bool(alignment and alignment.valid)
+        if provisional:
+            alignment=self.references.migration_hypothesis(frame)
         self._version += 1
         candidate = ReferenceLibrary(self.params, self.store, self.vision)
         candidate.start_view(frame, stamp, quality)
@@ -78,8 +81,10 @@ class OffsetModule:
         self._background = self.vision.last_matches
         self.pending = MotionResult(self.camera_id, uuid4().hex, str(frame_id), stamp,
             self.references.view, candidate.view, self._version, MotionStatus.PENDING.value,
-            alignment.matrix.tolist() if alignment and alignment.valid else None,
-            tuple(frame.shape[:2]), 0., dict(deadline=stamp+timeout_s, accepted=False))
+            alignment.matrix.tolist() if alignment and alignment.matrix is not None else None,
+            tuple(frame.shape[:2]), 0., dict(deadline=stamp+timeout_s, accepted=False,
+                requires_business_feedback=provisional,
+                source_ts=stamp if source_ts is None else float(source_ts)))
         return self.pending
 
     def submit(self, feedback: Feedback):
@@ -99,8 +104,12 @@ class OffsetModule:
         if stamp >= r.details['deadline'] or self._iterations >= max_iterations:
             self.pending = replace(r, status='failed', details={**r.details, 'reason':'timeout_or_iteration_limit'})
             return self.pending
+        if r.details.get('requires_business_feedback') and not any(
+            f.confidence>=.8 and len(f.points()[0])>=4 for f in self._feedback.values()):
+            self.pending=replace(r,details={**r.details,'accepted':False,'reason':'independent_business_support_required'})
+            return self.pending
         sources, targets, held_a, held_b = [], [], [], []
-        groups = []
+        groups = [];background_filter={}
         if self._background is not None and r.matrix is not None:
             _, _, a, b = self._background
             # last_matches are in an appearance image; convert to old anchor.
@@ -111,6 +120,14 @@ class OffsetModule:
                 if image is not None and np.array_equal(image, reference_image):
                     a = cv.perspectiveTransform(np.asarray(a,np.float32)[None],
                         np.linalg.inv(np.asarray(entry['matrix'],float)))[0]
+                    # ORB's RANSAC threshold is measured on the resized image.
+                    # Recheck in ORIGINAL pixels before selecting optimization
+                    # and held-out support; do not relax the final error limit.
+                    residual=np.linalg.norm(cv.perspectiveTransform(np.asarray(a,float)[None],
+                        np.asarray(r.matrix,float))[0]-b,axis=1)
+                    keep=residual<=error_px
+                    background_filter=dict(total=len(a),kept=int(keep.sum()),error_px=error_px)
+                    a,b=np.asarray(a)[keep],np.asarray(b)[keep]
                     groups.append((a, b))
                     break
         for f in self._feedback.values():
@@ -118,6 +135,7 @@ class OffsetModule:
                 groups.append(f.points())
         # Balance groups by capping their contribution; reserve every fourth pair.
         for a, b in groups:
+            if not len(a):continue
             ids = np.linspace(0, len(a)-1, min(len(a), 48), dtype=int)
             a, b = np.asarray(a)[ids], np.asarray(b)[ids]
             held = np.arange(len(a)) % 4 == 0
@@ -138,15 +156,49 @@ class OffsetModule:
             return self.pending
         matrix = np.eye(3); matrix[:2] = affine
         ha, hb = np.asarray(held_a,float), np.asarray(held_b,float)
-        errors = np.linalg.norm(cv.perspectiveTransform(ha[None],matrix)[0]-hb,axis=1)
         previous = (np.linalg.norm(cv.perspectiveTransform(ha[None],np.asarray(r.matrix))[0]-hb,axis=1)
                     if r.matrix is not None else np.full(len(ha),np.inf))
-        scale = np.hypot(affine[0,0],affine[1,0])
-        accepted = (mask.mean() >= .8 and np.max(errors) <= error_px
-            and .5 <= scale <= 2 and np.max(errors-previous) <= holdout_tolerance_px)
+        def validate(candidate):
+            errors=np.linalg.norm(cv.perspectiveTransform(ha[None],candidate)[0]-hb,axis=1)
+            training=np.linalg.norm(cv.perspectiveTransform(a[None],candidate)[0]-b,axis=1)
+            support=float(np.mean(training<=error_px))
+            scale=np.hypot(candidate[0,0],candidate[1,0])
+            valid=bool(support>=.8 and np.max(errors)<=error_px and .5<=scale<=2
+                and np.median(errors)<=np.median(previous)+holdout_tolerance_px
+                and np.percentile(errors,95)<=np.percentile(previous,95)+holdout_tolerance_px)
+            group_errors={}
+            for name,feedback in self._feedback.items():
+                if feedback.confidence<.8:continue
+                source,target=feedback.points()
+                residual=np.linalg.norm(cv.perspectiveTransform(source[None],candidate)[0]-target,axis=1)
+                if not len(residual):continue
+                group_errors[name]=dict(points=len(residual),median_px=float(np.median(residual)),
+                    p95_px=float(np.percentile(residual,95)),max_px=float(residual.max()))
+                valid=bool(valid and np.median(residual)<=error_px and np.percentile(residual,95)<=error_px*2)
+            return valid,errors,support,group_errors
+        # OpenCV's mask precedes its final least-squares refinement. Validate
+        # residuals of the actual output, not that stale mask. Independent
+        # hold-out maximum still has the same original-pixel hard limit.
+        accepted,errors,support,group_errors=validate(matrix)
+        chosen='joint_refined'
+        if not accepted and r.matrix is not None:
+            initial=np.asarray(r.matrix,float)
+            ok,initial_errors,initial_support,initial_groups=validate(initial)
+            if ok:
+                # New independent detections may validate the original mapping
+                # without requiring a numerical change. Never replace a valid
+                # initial solution with an unvalidated optimization or no map.
+                matrix=initial;accepted=ok;errors=initial_errors;support=initial_support
+                group_errors=initial_groups;chosen='initial_independently_validated'
         self.pending = replace(r, version=r.version+1, matrix=matrix.tolist() if accepted else r.matrix,
-            confidence=float(mask.mean()), details={**r.details, 'accepted':bool(accepted),
+            confidence=support, details={**r.details, 'accepted':bool(accepted),
             'iteration':self._iterations, 'holdout_max_px':float(errors.max()),
+            'holdout_median_px':float(np.median(errors)),'holdout_p95_px':float(np.percentile(errors,95)),
+            'solution':chosen if accepted else None,
+            'group_errors':group_errors,
+            'background_filter':background_filter,
+            'feedback':{name:asdict(f) for name,f in self._feedback.items() if f.confidence>=.8} if accepted else {},
+            'rejected_feedback':{name:asdict(f) for name,f in self._feedback.items() if f.confidence>=.8} if not accepted else {},
             'reason':'accepted' if accepted else 'validation_failed'})
         self._feedback.clear()
         return self.pending

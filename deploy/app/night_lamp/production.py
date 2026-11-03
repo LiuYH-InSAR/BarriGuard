@@ -52,6 +52,7 @@ class LampAdapter:
         self.controller=AdaptiveLampController(self.offset,raw,root,
             params=spec.observation,detector_spec=spec.detector)
         self._lock=threading.RLock();self._frozen=False;self._last_image=None
+        self._last_image_reference=None
         self._last_raw_frame=None
         self.error=None
 
@@ -62,7 +63,10 @@ class LampAdapter:
                 self.controller.on_frame(frame,wall.timestamp(),source_ts,frame_id,
                     is_night and not self._frozen,discovery_allowed=is_day)
                 if self.needs_offset_recheck:self.owner.request_check(self.clock.monotonic())
-            if is_night:self._last_image=frame.copy()
+            if is_night:
+                self._last_image=frame.copy()
+                self._last_image_reference=(self.controller.monitor.reference
+                    if self.controller._position_ok(wall.timestamp()) else None)
 
     def record_error(self,error):
         with self._lock:
@@ -84,6 +88,10 @@ class LampAdapter:
         with self._lock:
             data,path=self.controller.finalize(wall.timestamp())
             image=self._last_image if self._last_image is not None else base
+            image_reference=(self._last_image_reference if self._last_image is not None
+                else self.controller.monitor.reference)
+            for lamp in data['lamps']:
+                lamp['position_current']=bool(lamp['position_current'] and image_reference==self.controller.monitor.reference)
             jpeg=None;rendering=None
             if image is not None:
                 vis,rendering=render_lamp_report(image,data['lamps'],self.offset.camera_id,wall.isoformat())
@@ -92,7 +100,7 @@ class LampAdapter:
             return Report(self.offset.camera_id,'night_lamp','lamp_status',wall.isoformat(),jpeg,
                 dict(detector='yolo_v9c',lamps=data['lamps'],archive=str(path),reference=self.offset.references.view,
                      quality_policy=self.spec.detector.visibility,processing_error=self.error,
-                     image_rendering=rendering,
+                     image_rendering=rendering,image_reference=image_reference,
                      observation_policy=dict(normal_valid_cycles=self.spec.observation.normal_pulses,
                          normal_min_effective_s=0,negative_min_effective_s=self.spec.observation.effective_s,
                          deadline_s=self.spec.observation.deadline_s,cadence_s=self.spec.observation.cadence_s),
@@ -108,8 +116,14 @@ class LampAdapter:
         return self.controller.monitor.reference
 
     def offset_feedback(self,result,frame):
-        # Interface reserved; cross-view identity/feedback validation is deferred.
-        return None
+        with self._lock:return self.controller.spatial.feedback(result,self.clock.wall().timestamp())
+
+    def observe_offset_candidate(self,result,reference_frame,frame,stamp,source_ts,frame_id,night=False):
+        with self._lock:
+            self.controller.spatial.observe_candidate(result,reference_frame,frame,stamp,source_ts,frame_id,night)
+
+    def offset_feedback_ready(self,result,stamp):
+        with self._lock:return self.controller.spatial.feedback_ready(result,stamp)
 
     def apply_shared_offset(self,result):
         with self._lock:

@@ -75,3 +75,28 @@ class ReferenceLibrary:
         self._vision.last_matches = best_matches
         return best
 
+    def migration_hypothesis(self,frame):
+        """A weaker background proposal, never a normal/aligned decision.
+
+        Spatially sparse ORB support can propose a new-view transform only
+        when an independent business module subsequently corroborates it.
+        """
+        feature=getattr(self._vision,'_feature_align',None)
+        if not callable(feature):return None
+        cfg=self._p.motion;best=None;matches=None
+        for entry in self.appearances:
+            image=self._store.read_image(entry['image'])
+            if image is None:continue
+            prior=np.asarray(entry['matrix'],float)
+            result=feature(image,frame,warp_boxes(self.exclusions(),prior))
+            d=result.details
+            if (result.matrix is None or d.get('method')!='orb' or d.get('inliers',0)<cfg.min_inliers
+                or d.get('inlier_ratio',0)<cfg.min_inlier_ratio or d.get('error_px',float('inf'))>cfg.max_error_px
+                or min(d.get('cells',0),d.get('destination_cells',0))<cfg.stationary_min_cells
+                or abs(d.get('scaling',0)-1)>cfg.max_scale_error):continue
+            result.matrix=np.asarray(result.matrix)@prior
+            if best is None or d['inliers']>best.details['inliers']:
+                best=result;matches=self._vision.last_matches
+        self._vision.last_matches=matches
+        return best
+

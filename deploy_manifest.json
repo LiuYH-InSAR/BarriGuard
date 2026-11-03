@@ -36,35 +36,35 @@
       "path": "LAMP_DETECTION_PLAN.md",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 22191,
-      "sha256": "b8636fc25bdfcae12cead7331c468f538720521dbd8cb8ba14abfba9f09eda72"
+      "bytes": 23028,
+      "sha256": "d09a3098257d8bd69ba3a4f735a56b43ec0d0fd1fa70bb30af780b5cf51b4d13"
     },
     {
       "path": "NOT_UPLOAD_INDEX.md",
-      "bytes": 5203,
+      "bytes": 6754,
       "hash_mode": "text_lf",
-      "sha256": "dfc2f6a541364925be8c0d17cfa49e5ac153797b07499c47a2e58ec33a26bb58",
+      "sha256": "8823c3bc6b188f3645695e85cbaf6c05105ede572393352f2ed16527e52a91ce",
       "configurable": false
     },
     {
       "path": "PRODUCTION_WIRING.md",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 9384,
-      "sha256": "b752e6b8497cbcbfcf9b7249436932aba03245af128cff7541c84cc84cf56ae7"
+      "bytes": 14163,
+      "sha256": "a3b0105908ce066809eaa2fc7aef6a6642a6de1113866720b439e2a7c6361084"
     },
     {
       "path": "README.md",
-      "bytes": 2030,
+      "bytes": 2114,
       "hash_mode": "text_lf",
-      "sha256": "145b81e1c8bcd5e3566cec41f90d87c7e8a2b6b072ffb6e3d56972d000337216",
+      "sha256": "215a0fdb0346cab4de4af1f77bdb133059d84a8d5a71e38993ba6d334dd4a0d1",
       "configurable": false
     },
     {
       "path": "SERVER_DEPLOYMENT.md",
-      "bytes": 6181,
+      "bytes": 6292,
       "hash_mode": "text_lf",
-      "sha256": "4de3c4dedf134a6f26999af7c5677db62931f2c0e0176c28bf5e054f2e9259bb",
+      "sha256": "f24adf8c2114278f24a5598ff07837d09b5a9d5b9c0b7353b6f94c1f278b5648",
       "configurable": false
     },
     {
@@ -113,8 +113,8 @@
       "path": "deploy/app/camera_motion/contracts.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 1853,
-      "sha256": "c41d0b16a94fd0e766afd84f6c462e45df454471d0fefed79c214f0e01eb9246"
+      "bytes": 1902,
+      "sha256": "c98e7c0b8ced9669c86e363e0a0e2fa7522f699b453beb1bf8626df45ee281df"
     },
     {
       "path": "deploy/app/camera_motion/geometry.py",
@@ -134,22 +134,22 @@
       "path": "deploy/app/camera_motion/references.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 3502,
-      "sha256": "867ac08b3b206ff2500320723ef96ca2bd882f73e93ddf1104833fa3fc86359b"
+      "bytes": 4865,
+      "sha256": "76a165c0381b54d26ec5f5da4099ee164c5406440c2e45f31bd929a4495e48ea"
     },
     {
       "path": "deploy/app/camera_motion/runtime.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 9105,
-      "sha256": "a0ee2e820bf9a484b7173d1b70c792d8a6ca81047924c6cc3f0b07d578bdac2f"
+      "bytes": 10568,
+      "sha256": "260aa63b72915e42d1cd95cfbb0d4d58f64ebe2c3c58b0b27fc493209973f333"
     },
     {
       "path": "deploy/app/camera_motion/service.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 12963,
-      "sha256": "7303f90bcc680c7e09f05cef3fa20025e4eba8f4d5453eb469a5436266b5dde2"
+      "bytes": 16650,
+      "sha256": "c3c7283d07749acefeceef20e204930f91106295f042961f86fed6dbffbcf181"
     },
     {
       "path": "deploy/app/camera_motion/state.py",
@@ -316,15 +316,29 @@
       "path": "deploy/app/night_lamp/controller.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 8736,
-      "sha256": "f7224e428097791ee154d69ed6c16d7d8085cd0fbf7cc7c9101c74936a52f499"
+      "bytes": 9552,
+      "sha256": "3476163d30524e48c67f298b7e45ae2f675f84cf9dc833459283139dba640792"
+    },
+    {
+      "path": "deploy/app/night_lamp/landmarks.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 5366,
+      "sha256": "dc1f4c193a9db4294483f8064edc6e0d4f9c86b8c931cab39c1480097c5af2dc"
+    },
+    {
+      "path": "deploy/app/night_lamp/presence.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 3972,
+      "sha256": "6fd9730e6bf09ea4bcb64b5c262d1032851213012de1f2150dc2a5a5c440e7d4"
     },
     {
       "path": "deploy/app/night_lamp/production.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 5836,
-      "sha256": "cf767660b27bb703a2a2d5c8aba3bf20728b0deb6bb44ccd3804ca5f6eb13404"
+      "bytes": 6775,
+      "sha256": "4c53644cbbb5d2a14f315286189bb7fff4eb1888fff1c82f6d6b96c48b466955"
     },
     {
       "path": "deploy/app/night_lamp/quality.py",
@@ -334,32 +348,46 @@
       "sha256": "0b8cba72e3c2077d7acd61cab54397ee8eabad6631491b80a4e5e60170f0e9f3"
     },
     {
+      "path": "deploy/app/night_lamp/relocation.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 12938,
+      "sha256": "1cfcaed49a0b41d691ca6c116ac4b7160200bc1a86380693e7cca7efd8bbe8a7"
+    },
+    {
       "path": "deploy/app/night_lamp/report_render.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 3150,
-      "sha256": "9693bc9fe776871bedbf89140f51bae852bced64aa4b446c5acd33e05d631bbf"
+      "bytes": 3280,
+      "sha256": "f098d8c10a528edb8240428193cf7886a0edebee6170320e33ad92b38c8ec3a8"
     },
     {
       "path": "deploy/app/night_lamp/runtime.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 18241,
-      "sha256": "bdba79d52a4a5b4180d484a758a38fdcd30206f5b0b57675bfcee1e3a6db4ed7"
+      "bytes": 18020,
+      "sha256": "fc66a5c6ac5c8304cc5f2929a8bb987138da75346ac349ed3feba477c8d2fffc"
     },
     {
       "path": "deploy/app/night_lamp/settings.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 1863,
-      "sha256": "4fbe52f8b79da41e6638e9d730e83d7ba57a454254a293dfbe30fbcbbfe54890"
+      "bytes": 2615,
+      "sha256": "442df146b80d0595a8e8a27c56198e1bceeb514ab789cde646e99ffc24064bf7"
+    },
+    {
+      "path": "deploy/app/night_lamp/spatial.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 16242,
+      "sha256": "74f6d382061a0373755e11761ddd5cf7848e5f3f3d4c6012c5502a0ef60474de"
     },
     {
       "path": "deploy/app/night_lamp/tracked.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 13911,
-      "sha256": "1c60a36b538f5da9aa59e1fadce158ed4dcab10ad28a12921f87fe7110ba12a7"
+      "bytes": 14119,
+      "sha256": "ee06673d7dac8cb8d066ca4d1615fdce3e3766d366f7c2899257ce18b39961b2"
     },
     {
       "path": "deploy/app/roi_configs/1749.yaml",
@@ -510,9 +538,9 @@
     },
     {
       "path": "deploy/app/server/worker.py",
-      "bytes": 28058,
+      "bytes": 28078,
       "hash_mode": "text_lf",
-      "sha256": "e65dae848dffeed0135c3e2d3e65fee76a12d5a233123bb452063c12e63aaf76",
+      "sha256": "a1e1320fc9b8d8d9ad2e3465a2d313fa273e1e6ba5737791d79e886f6bd59163",
       "configurable": false
     },
     {
@@ -733,6 +761,20 @@
       "sha256": "9a6f58bdbd5946dd3b46614d63ffb70e761e8885cfa245bede834a53d37159d5"
     },
     {
+      "path": "deploy/tests/test_lamp_spatial.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 17335,
+      "sha256": "615740681c2e974573690b4b3e4b0eba976955ac938ec44cc8cb33605c0d3277"
+    },
+    {
+      "path": "deploy/tests/test_lamp_spatial_wiring.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 12118,
+      "sha256": "f2106ff6557d9f1e2e0f6c3b6792734f15b3beae38b803cce020d3e76ebc3747"
+    },
+    {
       "path": "deploy/tests/test_lamp_v7_configuration.py",
       "hash_mode": "text_lf",
       "configurable": false,
@@ -828,7 +870,7 @@
   ],
   "hash_note": "Text SHA256 normalizes CRLF to LF for Git cross-platform checkout; model hashes are byte-exact",
   "docker_build_tested": false,
-  "lamp_runtime": "v9c adaptive vision + independent business windows; disabled pending validation",
+  "lamp_runtime": "v9c pulse-first windows, persistent ID migration, joint feedback and day physical absence; local validation accepted 2026-11-03; template remains disabled",
   "lamp_model_path": "models/lamp_v7/best.pt",
   "lamp_inference_imgsz": 320
 }

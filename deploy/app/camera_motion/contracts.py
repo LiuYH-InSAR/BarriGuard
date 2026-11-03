@@ -49,6 +49,7 @@ class Feedback:
     confidence: float = 1.0
     independent: bool = True
     coordinate_space: str = 'new_reference_pixels'
+    evidence: dict = field(default_factory=dict)
 
     def points(self):
         a, b = np.asarray(self.old_points, float), np.asarray(self.observed_points, float)

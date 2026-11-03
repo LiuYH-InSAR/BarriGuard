@@ -11,8 +11,8 @@ GRAY=(180,180,180)
 def health_style(status):
     if status=='normal':return GREEN,'NORMAL','normal'
     if status=='not_flashing':return RED,'NOT FLASHING','failed'
-    # Reserved for a future independently evidenced missing-fixture decision.
-    # The current detector never generates these just because YOLO missed a box.
+    # Physical absence needs independent day-body/background evidence, never a
+    # missed YOLO box or night non-emission alone.
     if status in ('missing','lost'):return RED,'MISSING','failed'
     label={'insufficient_observation':'INSUFFICIENT','unobservable':'UNKNOWN',
            'below_threshold':'LOW FLASHES','no_flash':'NO FLASH YET'}.get(status,'UNKNOWN')
@@ -25,7 +25,7 @@ def render_lamp_report(frame,lamps,camera_id,report_at):
     Red is a decided failure/missing state. One zero-flash window, a gap, and an
     uncertain identity remain gray. Existing health decisions are not changed.
     """
-    vis=frame.copy();counts=Counter()
+    vis=frame.copy();counts=Counter();unplotted=[]
     ids=[str(l['lamp_id']) for l in lamps]
     suffix=6
     while len({identity[-suffix:] for identity in ids})<len(ids) and suffix<max(map(len,ids),default=0):suffix+=1
@@ -33,6 +33,9 @@ def render_lamp_report(frame,lamps,camera_id,report_at):
     for lamp in lamps:
         color,label,group=health_style(lamp.get('status'))
         counts[group]+=1
+        if not lamp.get('position_current',True):
+            unplotted.append(str(lamp['lamp_id']))
+            continue
         box=np.asarray(lamp['box'],float)
         if box.shape!=(4,) or not np.isfinite(box).all() or box[2]<=box[0] or box[3]<=box[1]:continue
         x0,y0,x1,y1=map(int,box)
@@ -54,7 +57,7 @@ def render_lamp_report(frame,lamps,camera_id,report_at):
     cv.putText(header,'Background = last night frame; report time is shown above',(12,70),0,scale*.65,(210,210,210),1,cv.LINE_AA)
     metadata=dict(policy='decided_health_v1',counts={k:counts[k] for k in ['normal','failed','unknown']},
         bgr_colors=dict(normal=list(GREEN),failed=list(RED),unknown=list(GRAY)),
-        display_ids=display_ids,source_frame_header_added_px=0,bottom_legend_added_px=76,
+        display_ids=display_ids,unplotted_ids=unplotted,source_frame_header_added_px=0,bottom_legend_added_px=76,
         rule='normal=green; confirmed failure/missing=red; insufficient/uncertain=gray',
         missing_detection_is_not_confirmed_missing=True)
     return np.vstack([vis,header]),metadata

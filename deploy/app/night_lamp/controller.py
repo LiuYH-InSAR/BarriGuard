@@ -109,7 +109,11 @@ class LampController:
         evaluated_at=observation['bucket']+self.monitor.params.cadence_s if observation else stamp
         status=self.monitor.status(key,evaluated_at,require_observable=False) if observation else 'unobservable'
         basis='latest_window'
-        if ambiguous:
+        spatial=getattr(self,'spatial',None)
+        physical=spatial.report_status(lamp,stamp) if spatial is not None else None
+        if physical=='missing' and same_view and not pending:
+            status='missing';basis='confirmed_day_body_absence'
+        elif ambiguous:
             status='unobservable';basis='identity_unverified'
         elif not same_view or pending:
             status='unobservable';basis='reference_unverified'
@@ -134,7 +138,14 @@ class LampController:
             box=lamp.box,body_box=lamp.body_box,aliases=lamp.aliases,observation=observation,
             current_observability='observable' if lamp.observable and not ambiguous and same_view and not pending else 'unobservable',
             identity_ambiguous=ambiguous,health_basis=basis,
+            position_current=bool(same_view and not pending),
             health_accepted_at=observation.get('accepted_at') if status=='normal' and observation else None,
+            physical_presence=dict(status=lamp.presence.get('status','unknown'),
+                confirmed_at=lamp.presence.get('confirmed_at'),last_checked_at=lamp.presence.get('last_checked_at'),
+                last_present_at=lamp.presence.get('last_present_at'),evidence=lamp.presence.get('last_evidence'),
+                valid_windows=lamp.presence.get('history',[])),
+            migration=lamp.spatial.get('migration'),
+            reference_position=lamp.spatial.get('anchor_body_box'),
             health_window_ended_at=observation['ended'] if status=='normal' and observation else None)
 
     def finalize(self,stamp):

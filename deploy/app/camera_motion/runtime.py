@@ -62,9 +62,12 @@ class CameraOffsetRuntime:
             self._failed_consumers.add(name)
             LOG.exception('Offset consumer %s failed to apply %s',name,result.task_id)
 
-    def process(self,frame,stamp,mono,frame_id,light_hint=None):
+    def process(self,frame,stamp,mono,frame_id,light_hint=None,source_ts=None):
         if frame_id is None or frame_id==self._last_frame:return self.offset.latest
         self._last_frame=frame_id
+        source_ts=stamp if source_ts is None else source_ts
+        if self.offset.pending is not None:
+            self._observe_candidates(frame,stamp,source_ts,frame_id,light_hint)
         for result in self.offset.commits:
             for name,consumer in self.consumers.items():self._apply(name,consumer,result)
         if self._next_check is not None and mono<self._next_check:return self.offset.latest
@@ -73,6 +76,15 @@ class CameraOffsetRuntime:
             if offset.pending.details.get('accepted'):
                 result=offset.commit()
             else:
+                waiting=[]
+                for name,consumer in self.consumers.items():
+                    ready=getattr(consumer,'offset_feedback_ready',None)
+                    if callable(ready) and ready(offset.pending,stamp) is False:waiting.append(name)
+                # Waiting is not an optimization iteration. Continue feeding
+                # independent frames until ready, with a bounded final fallback.
+                if waiting and stamp+self.spec.fast_s<offset.pending.details['deadline']:
+                    self._next_check=mono+self.spec.fast_s
+                    return offset.pending
                 for consumer in self.consumers.values():
                     fn=getattr(consumer,'offset_feedback',None)
                     if fn:
@@ -126,9 +138,10 @@ class CameraOffsetRuntime:
             else:
                 self._stable_since=self._stable_previous=None
             if stable:
-                offset.begin_migration(frame,stamp,frame_id,self.spec.feedback_timeout_s)
+                offset.begin_migration(frame,stamp,frame_id,self.spec.feedback_timeout_s,source_ts=source_ts)
                 self._candidate_frame=frame.copy()
                 self._candidate_frame_id=frame_id
+                self._observe_candidates(frame,stamp,source_ts,frame_id,light_hint)
         else:
             self._stable_since=self._stable_previous=None
         # A newly created/restored reference has not proved alignment yet.
@@ -137,6 +150,16 @@ class CameraOffsetRuntime:
         self._next_check=mono+(self.spec.period_s if state==CameraState.NORMAL and result.status=='aligned' else self.spec.fast_s)
         if self._last_save is None or stamp-self._last_save>=self.spec.period_s:self.save(stamp)
         return offset.pending or result
+
+    def _observe_candidates(self,frame,stamp,source_ts,frame_id,light_hint):
+        for name,consumer in self.consumers.items():
+            observe=getattr(consumer,'observe_offset_candidate',None)
+            if not callable(observe):continue
+            try:
+                observe(self.offset.pending,self._candidate_frame,frame,stamp,source_ts,
+                        frame_id,night=light_hint=='night')
+            except Exception:
+                LOG.exception('Candidate observation failed for %s; no migration evidence accepted',name)
 
     def request_check(self,mono):
         """A consumer may request a check; only this owner interprets motion."""

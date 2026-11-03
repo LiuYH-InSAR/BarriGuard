@@ -440,7 +440,7 @@ class CameraWorker:
             if continuous or state!=ScheduleState.NIGHT or precheck or needs_recovery:
                 self._offset_runtime.process(frame,wall.timestamp(),mono,frame_id,
                     light_hint=('night' if state in (ScheduleState.NIGHT,ScheduleState.FROZEN)
-                                else 'transition' if state!=ScheduleState.DAY else None))
+                                else 'transition' if state!=ScheduleState.DAY else None),source_ts=source_ts)
             if self._lamp_adapter:
                 try:
                     self._lamp_adapter.on_shared_frame(frame,wall,source_ts if source_ts is not None else mono,

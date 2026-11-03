@@ -1,5 +1,20 @@
 # 本地资料与备份索引
 
+## 2026-11-03 用户接受版本
+
+- [当前代码水马与灯具联合回放报告](tmp/system_video_validation_20261103/report/index.html)：两路15分钟夜间录像，水马各29次真实推理；闪烁结果1749为13正常、1750为17正常加2未知。报告另含约5分钟白天基准补测及07:00模拟图。
+- [代码检查与已知限制](tmp/system_video_validation_20261103/CODE_REVIEW.md) · [最终校验](tmp/system_video_validation_20261103/FINAL_CHECK.json)。
+- 用户在本轮检查及视频回放后接受当前版本。接受版备份：`tmp/backups/accepted_water_lamp_v7_20261103_083606/`，附逐文件SHA256、校验记录与恢复说明。
+- 本地录像、标注、报告和备份全部留在`tmp`，不上传GitHub。当前灯具配置仍默认禁用；本次接受不等同于已经完成真实整夜、掉灯/转向及服务器性能验收。
+
+## 2026-11-02 灯具迁移与实体缺失补全
+
+- [验证报告：原始15分钟、模拟偏移及缺失对照](tmp/lamp_migration_presence_20261102/report/index.html)
+- [机器可读验证记录](tmp/lamp_migration_presence_20261102/report/VALIDATION.json)
+- 修改前备份：`tmp/backups/before_lamp_migration_presence_20261102_162154/`。
+- 本次完成版备份：`tmp/backups/completed_spatial_presence_v7_20261102_183537/`，逐文件SHA256及恢复说明随备份保存。
+- 原始录像回归、人工偏移和合成缺失分别列出；人工偏移及合成缺失不能代替现场验收。本次没有训练、启动实时拉流、发送回调或上传GitHub。
+
 ## 2026-11-02 本次整理
 
 当前项目根目录保留生产源码、选定模型、测试、配置、依赖与现行说明。开发材料完整移动到[本地归档目录](tmp/development_cleanup_20261102_154735/)，没有删除原始材料或覆盖此前备份；tmp由Git和Docker忽略。以下链接仅供本地使用。

@@ -2,7 +2,7 @@
 
 The vision tracker owns calibration and optical identities. LampMonitor alone
 owns business windows. No lifetime tracker counts/durations enter its counters.
-Shared camera references are read-only here; cross-view ID migration is deferred.
+Shared camera references are read-only here; validated transitions migrate IDs.
 """
 from dataclasses import replace, asdict
 from .adaptive import LampPipelineV9, V6Params
@@ -29,6 +29,7 @@ class AdaptiveLampController(LampController):
         self.bindings={};self.pending={};self.epochs={};self._ledger_bucket=None
         self.search_counter=PulseCounter()
         self.last_result=None;self._mode=None;self._frame=None;self._source_ts=None
+        self._migration_offers={}
         self._geometry_blocked_at=None
         self.visibility_mode=getattr(detector_spec,'visibility','background')
         self._view=self.monitor.reference
@@ -45,13 +46,17 @@ class AdaptiveLampController(LampController):
             self.monitor.results=[];self._last_saved_bucket=None
         # A restored coordinate/history is a prior, never visibility evidence.
         for lamp in self.monitor.lamps.values():lamp.observable=False
+        from .spatial import LampSpatialRuntime
+        self.spatial=LampSpatialRuntime(self,saved)
 
     def _new_pipeline(self):
         self.pipeline=LampPipelineV9(self.detector,self.vision_params)
         self.bindings.clear();self.pending.clear();self.epochs.clear()
         self.last_result=None
+        self._migration_offers={}
 
     def pause(self, source_ts):
+        if hasattr(self,'spatial'):self.spatial.pause()
         for counter in [self.search_counter,*self.monitor.observations.values(),*self.pending.values()]:
             counter.sample(source_ts,0.,False,self.signal_params)
             counter.previous_valid=False;counter.phase='unknown';counter.rise=None
@@ -63,21 +68,7 @@ class AdaptiveLampController(LampController):
         detector.nested.pairs.clear()
 
     def reset_reference(self,result):
-        monitor=self.monitor
-        if result.camera_id!=monitor.camera_id or result.status!='committed' or not result.new_reference:
-            raise ValueError('Only committed shared transitions from this camera may reset lamps')
-        if monitor.reference==result.new_reference:return
-        if monitor.reference!=result.old_reference and monitor.lamps:
-            raise ValueError('Lamp target reference cannot skip a scene transition')
-        if monitor.bucket is not None:monitor._finish(result.checked_at)
-        # Preserve old IDs and history as unknown; do not predict/associate them
-        # into the new view while cross-view migration is deferred.
-        for lamp in monitor.lamps.values():lamp.observable=False
-        monitor.reference=result.new_reference
-        monitor._applied.add((result.task_id,result.version))
-        monitor.bucket=None;monitor.observations={};monitor.accepted={};monitor.candidates={}
-        self._view=result.new_reference;self._geometry_blocked_at=None;self._new_pipeline()
-        self.checkpoint(result.checked_at)
+        self.spatial.apply(result)
 
     def _position_ok(self,wall_ts):
         latest=self.offset.latest
@@ -115,7 +106,9 @@ class AdaptiveLampController(LampController):
         quality.prepared_metrics=getattr(self.quality,'last_metrics',None)
         try:result=self.pipeline.step(frame,source_ts,frame_id,night=is_night)
         finally:quality.prepared_metrics=None
+        self._migration_offers=self.spatial.reassociation_offers(result,frame,frame_id,is_night)
         self.consume(result,wall_ts,source_ts,is_night)
+        self.spatial.on_frame(frame,wall_ts,source_ts,frame_id,is_night)
         if self._last_checkpoint is None or wall_ts-self._last_checkpoint>=60:
             self.checkpoint(wall_ts);self._last_checkpoint=wall_ts
 
@@ -199,13 +192,16 @@ class AdaptiveLampController(LampController):
             counter=self.pending.setdefault(local,PulseCounter())
             key=self.bindings.get(local)
             if key is None and admitted and record.get('hits',0)>=self.vision_params.promotion_hits:
-                key=self._match_known(record,used)
+                key=self._migration_offers.get(local)
+                if key in used:key=None
+                if key is None:key=self._match_known(record,used)
                 if key is not None:
                     self.bindings[local]=key;used.add(key)
                     # A persistent identity may survive a lost local tracker,
                     # but this new sampler/calibration starts fresh evidence.
                     if monitor.bucket is not None and key not in monitor.accepted:monitor.observations[key]=PulseCounter()
-            if key is None and admitted and record.get('confirmed'):
+            if (key is None and admitted and record.get('confirmed')
+                and not self.spatial.near_migrated_site(record)):
                 key=monitor.add_known(record['box'],wall_ts,'night_flashes' if is_night else 'day_detection')
                 self.bindings[local]=key;used.add(key)
                 if monitor.bucket is not None:
@@ -236,7 +232,9 @@ class AdaptiveLampController(LampController):
             if is_night and monitor.bucket is not None:
                 counter.sample(source_ts,observation.get('signal',0.),usable and not reset,self.signal_params)
                 if key is not None and counter.last_flash==source_ts:monitor.lamps[key].last_flash=wall_ts
-                if key is not None and usable and not reset:monitor.accept_normal(key,wall_ts)
+                if key is not None and usable and not reset:
+                    monitor.accept_normal(key,wall_ts)
+                    if key in monitor.accepted:self.spatial.presence.positive(monitor.lamps[key],wall_ts,'night_flashes')
             self.pending[local]=counter
         for key,lamp in monitor.lamps.items():
             if key not in seen:
@@ -263,7 +261,8 @@ class AdaptiveLampController(LampController):
         state=super()._snapshot(stamp)
         state['observation_policy']=asdict(self.monitor.params)
         state['prior_policy_history']=self.prior_policy_history
-        state['adaptive']=dict(version='v9c',evidence_policy='pulse_first_window_v4',cross_view_migration=False,
+        state['adaptive']=dict(version='v9c',evidence_policy='pulse_first_window_v4',cross_view_migration=True,
+            spatial_policy='independent_reference_and_day_presence_v1',migrations=self.spatial.migrations,
             bindings={str(k):v for k,v in self.bindings.items()},
             tracks=(self.last_result or {}).get('tracks',[]),
             observation_audit=(self.last_result or {}).get('observation_audit',{}),
