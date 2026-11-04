@@ -10,7 +10,7 @@
 | deploy/app/water_barrier/ | 现有 V6 水马功能 |
 | deploy/app/night_lamp/ | 唯一 YOLO 灯具方案：定位、身份、观察、报告、保存 |
 | deploy/app/server/ | 配置、API、拉流、调度与回调 |
-| deploy/config.yaml、config.test.yaml | 验收前保持灯具禁用的模板 |
+| deploy/config.yaml、config.test.yaml | 生产配置开启两路灯具和回调；测试配置保持关闭 |
 | deploy/Dockerfile、docker-compose.yml | 运行环境与持久化 |
 | deploy/docker-compose.lamp.yml | 可选覆盖内置 v7 灯具模型的只读挂载 |
 | deploy/requirements-server.txt、.env.example | 依赖与配置变量示例 |

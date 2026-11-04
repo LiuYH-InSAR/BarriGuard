@@ -1,4 +1,4 @@
-# 灯具已接入 v7 / 320；当前保留离线验收状态，实时启用由 enabled 控制。
+# 生产配置：两路灯具闪烁检测及报警回调已启用；测试请使用 config.test.yaml。
 version: 1
 runtime:
   host: 0.0.0.0
@@ -36,9 +36,9 @@ cameras:
       status: ready
       report_interval_s: 3600
     night_lamp:
-      enabled: false
+      enabled: true
       schedule: night
-      status: calibration_pending
+      status: ready
       detector:
         weights: ../models/lamp_v7/best.pt
         device: cpu
@@ -65,9 +65,9 @@ cameras:
       status: ready
       report_interval_s: 3600
     night_lamp:
-      enabled: false
+      enabled: true
       schedule: night
-      status: calibration_pending
+      status: ready
       detector:
         weights: ../models/lamp_v7/best.pt
         device: cpu

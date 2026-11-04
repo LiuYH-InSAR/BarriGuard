@@ -357,6 +357,7 @@ class ProductionWiring(unittest.TestCase):
         from server.worker import Runtime
         data=yaml.safe_load((ROOT/'deploy/config.yaml').read_text(encoding='utf-8'))
         data['callback']['enabled']=False
+        for camera in data['cameras']:camera['algorithms']['night_lamp']['enabled']=False
         data['runtime']['output_dir']=str(self.root/'output')
         for camera in data['cameras']:camera['offset']={'root':str(self.root/'motion')}
         cfg=parse_runtime(data,ROOT/'deploy')
@@ -433,10 +434,10 @@ class LampConfig(unittest.TestCase):
         lamp=self.data['cameras'][0]['algorithms']['night_lamp']
         lamp['enabled']=True;lamp['detector']['weights']=str(weight)
         return lamp
-    def test_untrained_template_explicitly_disables_lamp(self):
+    def test_production_template_enables_both_lamp_adapters(self):
         cfg=self.parse()
         self.assertTrue(all(c.offset.enabled for c in cfg.cameras))
-        self.assertTrue(all('night_lamp' not in c.algorithms for c in cfg.cameras))
+        self.assertTrue(all('night_lamp' in c.algorithms for c in cfg.cameras))
     def test_requires_local_weights_when_enabled(self):
         lamp=self.enable();lamp['detector']['weights']=str(self.root/'missing.pt')
         with self.assertRaises(ConfigError):self.parse()
@@ -447,6 +448,7 @@ class LampConfig(unittest.TestCase):
     def test_rejects_old_options_even_if_disabled(self):
         for key,value in [('backend','legacy'),('tracked',{}),('lamp_checks',{}),('periodicity',{}),('lamp_roi',{})]:
             data=copy.deepcopy(self.data)
+            data['cameras'][0]['algorithms']['night_lamp']['enabled']=False
             data['cameras'][0]['algorithms']['night_lamp'][key]=value
             with self.subTest(key=key):
                 with self.assertRaises(ConfigError):parse_runtime(data,ROOT/'deploy')

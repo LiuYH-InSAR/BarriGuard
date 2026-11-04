@@ -16,11 +16,11 @@ git clone --branch work/current-water-lamp https://github.com/LiuYH-InSAR/BarriG
 
 ```bash
 cd <仓库目录>/deploy
-cp config.test.yaml config.local.yaml
-cp .env.example .env
+cp -n config.yaml config.local.yaml
+cp -n .env.example .env
 ```
 
-按服务器情况检查`config.local.yaml`的视频流、回调地址和输出目录。测试模板关闭callback，灯具仍禁用；在服务器试运行时将所需摄像头的 `night_lamp.enabled` 改为 `true`，保留v7权重路径、320输入和观察参数。两份私有文件均不提交GitHub；后续pull不会覆盖。
+首次部署用生产配置创建私有文件，其中两路`night_lamp.enabled`与`callback.enabled`均已开启；检查视频流、回调地址和输出目录，保留v7权重路径、320输入和观察参数。已有`config.local.yaml`不要覆盖，逐项将这三个开关改为`true`。测试配置`config.test.yaml`仍关闭灯具与回调。两份私有文件均不提交GitHub；后续pull不会覆盖。
 
 ```bash
 docker compose build --pull barriguard
@@ -48,7 +48,9 @@ docker compose up -d --no-build barriguard
 
 模型和代码应来自同一提交。检查失败先处理，旧容器可继续运行。不要用`git reset --hard`覆盖服务器改动；私有配置保留在`config.local.yaml`。
 
-确认需要真实回调时，在服务器私有配置中打开`callback.enabled`并重启。没有`.env`时Compose默认使用`config.yaml`，其回调保持原来的开启状态。
+更新前确认实际挂载文件：`.env`的`BARRIGUARD_CONFIG_FILE`若指向`config.local.yaml`，必须在这个文件启用两路`night_lamp.enabled`和`callback.enabled`。改完配置执行`docker compose up -d --no-build --force-recreate barriguard`使其重新加载。没有`.env`时Compose默认使用生产`config.yaml`，灯具与回调均已开启。
+
+外部访问8001时，在`.env`设置`BARRIGUARD_HTTP_PORT=8001`即可；容器内`runtime.port`保持8000。映射为8001:8000，报警仍主动发送到`callback.url`。07:00报告的对外类型仍为`alert_type=night_heatmap`、`report_type=lamp_status`；端口映射不改变此消息。正常日志写入`data/logs/`，可用来检查报告生成与发送结果。
 
 ## 镜像与数据
 
@@ -85,10 +87,10 @@ docker compose up -d --no-build barriguard
 
 历史水马资产生成满72小时后按周期清理，停用参考不立即删除。`current.json`保存当前状态与持续事件去重，不按历史图片清理。日志不纳入水马72小时规则。
 
-灯具已统一为 v9c 新方案，已有本地候选权重；配置在验收前保持禁用。启用、权重挂载和 output/lamp_state 七天历史清理见 PRODUCTION_WIRING.md。
+灯具已统一为 v9c 新方案，生产配置启用两路检测，测试配置保持禁用。权重挂载和 output/lamp_state 七天历史清理见 PRODUCTION_WIRING.md。
 
 suspect本身不推送；符合资格的候选升级error后才报警。小目标、背景证据不足、弱存在和光照待确认不会直接累计成error。
 
-灯具启用：仓库模板保持 `enabled=false`；服务器受控试运行通过私有 `config.local.yaml` 开启，开始时保持callback关闭。镜像已包含 `models/lamp_v7/best.pt`，无需额外挂载；仅需替换该权重时，设置 `BARRIGUARD_LAMP_WEIGHTS_FILE` 后使用可选的 `docker-compose.lamp.yml`。公共参考状态位于 `output/camera_motion`，灯具状态位于 `output/lamp_state`，默认compose已持久化。
+灯具启用：生产`config.yaml`中两路`enabled=true`，且回调开启；测试配置均关闭。现有私有`config.local.yaml`需自行同步开关，不能仅pull后假定已生效。镜像已包含 `models/lamp_v7/best.pt`，无需额外挂载；仅需替换该权重时，设置 `BARRIGUARD_LAMP_WEIGHTS_FILE` 后使用可选的 `docker-compose.lamp.yml`。公共参考状态位于 `output/camera_motion`，灯具状态位于 `output/lamp_state`，默认compose已持久化。
 
 正常为同一周期15次可信完整闪烁，无300秒的正向门槛；零闪证据至少300有效秒。未通过者继续到25分钟截止，每30分钟重开。03:00停止采样，07:00统一出图，状态按绿/红/灰显示。灰色是观察或身份不足，不能据此判坏。发布前合成时钟测试覆盖跨夜、恢复、空窗口及调度边界；真实整夜、服务器双路性能与网络解码仍需试运行验收。

@@ -6,9 +6,9 @@
   "files": [
     {
       "path": ".dockerignore",
-      "bytes": 239,
+      "bytes": 260,
       "hash_mode": "text_lf",
-      "sha256": "bd9f4eebdc267e03e1f121bbef8c27a08e72f910d481889789374e6a3c902744",
+      "sha256": "3c734875fea0e734b10287008c9d2eb7da5927f311ea1c1ebfde96a32d4770f4",
       "configurable": false
     },
     {
@@ -41,37 +41,37 @@
     },
     {
       "path": "NOT_UPLOAD_INDEX.md",
-      "bytes": 6754,
+      "bytes": 7181,
       "hash_mode": "text_lf",
-      "sha256": "8823c3bc6b188f3645695e85cbaf6c05105ede572393352f2ed16527e52a91ce",
+      "sha256": "040ce4006a00f40228d2005bf72af071fb3740772efb0a64736dff4585514608",
       "configurable": false
     },
     {
       "path": "PRODUCTION_WIRING.md",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 14163,
-      "sha256": "a3b0105908ce066809eaa2fc7aef6a6642a6de1113866720b439e2a7c6361084"
+      "bytes": 14531,
+      "sha256": "8102a73bdf8297379ef26318df4403b24daf83e0bd0e93e797a250f34920bdeb"
     },
     {
       "path": "README.md",
-      "bytes": 2114,
+      "bytes": 2262,
       "hash_mode": "text_lf",
-      "sha256": "215a0fdb0346cab4de4af1f77bdb133059d84a8d5a71e38993ba6d334dd4a0d1",
+      "sha256": "b0d3c189c4d3a9f2c5b07a3611640dc547489922d3878cf91d91a900340f4462",
       "configurable": false
     },
     {
       "path": "SERVER_DEPLOYMENT.md",
-      "bytes": 6292,
+      "bytes": 6961,
       "hash_mode": "text_lf",
-      "sha256": "f24adf8c2114278f24a5598ff07837d09b5a9d5b9c0b7353b6f94c1f278b5648",
+      "sha256": "fd8926405ca83f7268dfd9af60589f0144f2cd3ce9024daf8f658c0710db3fb2",
       "configurable": false
     },
     {
       "path": "UPLOAD_INDEX.md",
-      "bytes": 2001,
+      "bytes": 2031,
       "hash_mode": "text_lf",
-      "sha256": "658d17a7ef2fe3214782bcfe41777d3c5c13099dd47c611e9c354aed50a1e210",
+      "sha256": "c8eea81bd4b0259905ba444927fbafc1ad5c200dc2cc124eb6e01e80bb6e6d13",
       "configurable": false
     },
     {
@@ -664,9 +664,9 @@
     },
     {
       "path": "deploy/config.yaml",
-      "bytes": 2007,
+      "bytes": 1985,
       "hash_mode": "text_lf",
-      "sha256": "18420ea8775c9bd569c2d8eb438ba124754bd6a9827c4a92378d325d81b3c862",
+      "sha256": "18bd28a65be218827d2628bf1e275fac7ceb253790b07ef58702e9cf0880f634",
       "configurable": true
     },
     {
@@ -778,8 +778,8 @@
       "path": "deploy/tests/test_lamp_v7_configuration.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 1757,
-      "sha256": "3c3f5f7bcbb75ec6d7d2913c1adff3ea6be47123a90d6bb00e2a3242bcf5be08"
+      "bytes": 2656,
+      "sha256": "d5eb54f0ba7f15bc3e8482b1d7b652d07e1fca96d011740cd4e7a9b496b96be7"
     },
     {
       "path": "deploy/tests/test_motion_lamp.py",
@@ -792,8 +792,8 @@
       "path": "deploy/tests/test_production_wiring.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 27087,
-      "sha256": "499c51684c8d8508a8602b7ebc98fb00097db432337603031b102a17e4758518"
+      "bytes": 27252,
+      "sha256": "4ab0377eca380dc6519d1b427bc0d5e870fed640539273a29c6fd9c8a92ad62e"
     },
     {
       "path": "deploy/tests/test_render_isolation.py",
@@ -870,7 +870,7 @@
   ],
   "hash_note": "Text SHA256 normalizes CRLF to LF for Git cross-platform checkout; model hashes are byte-exact",
   "docker_build_tested": false,
-  "lamp_runtime": "v9c pulse-first windows, persistent ID migration, joint feedback and day physical absence; local validation accepted 2026-11-03; template remains disabled",
+  "lamp_runtime": "v9c pulse-first windows, persistent ID migration, joint feedback and day physical absence; production enables both cameras and callback; test template remains disabled",
   "lamp_model_path": "models/lamp_v7/best.pt",
   "lamp_inference_imgsz": 320
 }
