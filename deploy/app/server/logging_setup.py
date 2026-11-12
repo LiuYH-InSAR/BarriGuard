@@ -10,6 +10,7 @@ no-op，``__main__`` 与 ``app`` 两条入口都调也不会挂两份 sink。
 from __future__ import annotations
 
 import sys
+from datetime import time, timedelta, timezone
 from pathlib import Path
 
 from loguru import logger
@@ -18,7 +19,7 @@ LOG_SUBDIR = "logs"
 LOG_FILE = "barriguard_{time:YYYY-MM-DD}.log"
 FILE_LEVEL = "INFO"
 CONSOLE_FALLBACK = "WARNING"
-ROTATION = "20 MB"
+ROTATION = time(8, tzinfo=timezone(timedelta(hours=8)))
 RETENTION = "14 days"
 FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <7} | {name}:{line} | {message}"
 

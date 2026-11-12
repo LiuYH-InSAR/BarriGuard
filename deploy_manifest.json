@@ -475,9 +475,9 @@
     },
     {
       "path": "deploy/app/server/logging_setup.py",
-      "bytes": 2554,
+      "bytes": 2638,
       "hash_mode": "text_lf",
-      "sha256": "78511a6375ba9f70907de3fbdbb2c0e5f130b40c3e4c2da9bcac7dc9ed0fe361",
+      "sha256": "bac262a3636c36226cbe5ca61ee664dead12da437f79e0255bcb90e8651f7969",
       "configurable": false
     },
     {
