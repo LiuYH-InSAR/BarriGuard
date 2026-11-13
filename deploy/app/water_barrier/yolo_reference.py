@@ -2,7 +2,7 @@
 import numpy as np
 from dataclasses import replace
 
-from .yolo_geometry import build_rows, match_boxes, warp_boxes, infer_initial_gaps
+from .yolo_geometry import build_rows, iou, match_boxes, warp_boxes, infer_initial_gaps
 
 
 from camera_motion.references import ReferenceLibrary
@@ -20,6 +20,7 @@ class References:
         self.identities = []
         self.baseline_created = None
         self._candidates = []
+        self._pending = []
         self.inferred_indices = []
         self.gap_scan_complete = False
 
@@ -36,6 +37,7 @@ class References:
         self.boxes,self.rows,self.identities = [],[],[]
         self.baseline_created = None
         self._candidates = []
+        self.reset_pending()
         self.inferred_indices = []
         self.gap_scan_complete = False
         self.add_appearance(frame,stamp,quality,np.eye(3))
@@ -84,6 +86,41 @@ class References:
         self.baseline_created = stamp
         self._store.record('baselines',stamp,self.baseline_dump())
         return True
+
+    def reset_pending(self):
+        self._pending = []
+
+    def extend_baseline(self, unmatched, anchor_to_frame, stamp):
+        """Register repeatedly visible new slots in the existing reference view."""
+        cfg = self._p
+        threshold = cfg.inference.supplementary_iou
+        boxes = warp_boxes(unmatched, np.linalg.inv(anchor_to_frame))
+        boxes = [box for box in boxes
+                 if not any(iou(box, old) >= threshold for old in self.boxes)]
+        matches, _ = match_boxes([samples[-1] for samples in self._pending], boxes,
+                                 cfg.matching)
+        pending = [self._pending[i] + [boxes[j]] for i, j in matches.items()]
+        used = set(matches.values())
+        pending.extend([box] for j, box in enumerate(boxes) if j not in used)
+        self._pending = []
+        added = False
+        for samples in pending:
+            if len(samples) < cfg.reference.min_baseline_observations:
+                self._pending.append(samples)
+                continue
+            box = np.median(samples, axis=0).tolist()
+            if (len(self.boxes) >= cfg.initial_gaps.max_slots
+                    or any(iou(box, old) >= threshold for old in self.boxes)):
+                continue
+            self.identities.append(f'{self.view}:B{len(self.boxes)}')
+            self.boxes.append(box)
+            added = True
+        if added:
+            self.rows = build_rows(self.boxes, cfg.reference)
+            self.baseline_created = stamp
+            self.gap_scan_complete = False
+            self._store.record('baselines', stamp, self.baseline_dump())
+        return added
 
     def baseline_dump(self):
         return dict(view=self.view,boxes=self.boxes,rows=self.rows,identities=self.identities,

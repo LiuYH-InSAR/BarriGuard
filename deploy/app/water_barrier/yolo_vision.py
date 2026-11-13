@@ -16,17 +16,21 @@ class Vision(BackgroundVision):
         x0,y0,x1,y1 = [int(round(v)) for v in box]
         x0,x1 = max(0,x0),min(width,x1)
         y0,y1 = max(0,y0),min(height,y1)
-        if x1-x0 < cfg.patch_px or y1-y0 < cfg.patch_px:
+        short_side = min(x1-x0, y1-y0)
+        if short_side < cfg.min_patch_px * 2:
             return False,dict(reason='small_or_outside')
         row = next((r for r in rows if index in r),[index])
         others = [i for i in row if i != index]
-        visible = sum(i in matches for i in others)/max(1,len(others))
+        visible_count = sum(i in matches for i in others)
+        visible = visible_count/max(1,len(others))
         absent = [i for i in row if i not in matches]
         newly_missing = [i for i in absent if i not in previous_missing
-                         and min(expected[i][2]-expected[i][0],expected[i][3]-expected[i][1]) >= cfg.patch_px]
+                         and min(expected[i][2]-expected[i][0],expected[i][3]-expected[i][1]) >= cfg.min_patch_px * 2]
         if len(newly_missing) >= cfg.simultaneous_min:
             return False,dict(reason='simultaneous_disappearance',neighbor_ratio=visible)
-        if not others or visible < cfg.neighbor_ratio:
+        # Several consecutive missing barriers can make the row ratio low.
+        # The first shared disappearance is still excluded above.
+        if not others or (visible < cfg.neighbor_ratio and visible_count < cfg.min_visible_neighbors):
             return False,dict(reason='neighbors_unreliable',neighbor_ratio=visible)
         lab = cv.cvtColor(frame,cv.COLOR_BGR2LAB).astype(np.float32)
         gray_image = cv.cvtColor(frame,cv.COLOR_BGR2GRAY)
@@ -37,7 +41,7 @@ class Vision(BackgroundVision):
         band_end = min(height,y1+int((y1-y0)*cfg.band_height_ratio))
         road = []
         textures = []
-        patch = cfg.patch_px
+        patch = max(cfg.min_patch_px, min(cfg.patch_px, short_side // 3))
         for yy in range(y1,band_end-patch+1,patch):
             for xx in range(x0,x1-patch+1,patch):
                 if forbidden[yy:yy+patch,xx:xx+patch].any():

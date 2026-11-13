@@ -21,6 +21,8 @@ from .yolo_reference import References
 from .yolo_store import Store
 from .yolo_vision import Vision, visible_box
 
+POLICY_VERSION = 4
+
 
 class YoloWaterAlgorithm:
     name = 'water_gap'
@@ -78,12 +80,17 @@ class YoloWaterAlgorithm:
             return
         self._applied_offsets = {tuple(t) for t in data.get('applied_offsets', [])}
         episodes = data.get('episodes',{})
-        self._episodes = Episodes(self._p,episodes.get('records'),episodes.get('guard_until',0.0))
+        current_policy = data.get('policy_version') == POLICY_VERSION
+        records = episodes.get('records', {})
+        if not current_policy:
+            # Old timeouts could be based entirely on occlusion. Keep confirmed episodes.
+            records = {key: value for key, value in records.items()
+                       if value.get('error_reason') != 'suspect_timeout'}
+        self._episodes = Episodes(self._p,records,episodes.get('guard_until',0.0))
         if data.get('model_sha256') != self._model_sha:
             # 首次切到V6时不继承旧模型可能错误建立的正常排列，仍保留通知冷却。
             self._episodes.guard_new_view(stamp)
             return
-        current_policy = data.get('policy_version') == 3
         self._accumulation = Accumulation(self._p,data.get('accumulation',{}) if current_policy else {})
         self._presence_patches = data.get('presence_patches',{}) if current_policy else {}
         try:
@@ -132,6 +139,7 @@ class YoloWaterAlgorithm:
         self._status = 'alignment_pending'
         self._previous_missing = set()
         self._evidence_frame = None
+        self._refs.reset_pending()
 
     def step(self, frame, now):
         stamp = self._clock()
@@ -361,6 +369,7 @@ class YoloWaterAlgorithm:
         self._last_fingerprint = fingerprint
         if self._last_detect is not None and now-self._last_detect > self._p.timing.period_s*self._p.timing.max_gap_periods:
             self._histories = {}
+            self._refs.reset_pending()
         self._last_detect = now
         try:
             detected = self._detector.detect(frame)
@@ -379,7 +388,8 @@ class YoloWaterAlgorithm:
             self._is_daylight = daylight
         if not self._refs.boxes:
             # 夜间漏检不能固化为不完整的新排列；待白天再收敛建立。
-            ready = self._daylight.candidate == 'day' and self._refs.collect(detected,self._matrix,stamp)
+            reliable = [box for box in detected if box[4] >= self._p.policy.recovery_confidence]
+            ready = self._daylight.candidate == 'day' and self._refs.collect(reliable,self._matrix,stamp)
             self._annots = self._detection_annots(detected)
             self._last_decisions = {}
             self._status = 'ok' if ready else 'baseline_pending'
@@ -392,6 +402,16 @@ class YoloWaterAlgorithm:
         diag = np.hypot(*frame.shape[:2])
         error_ratio = self._alignment_details.get('error_px',0)/max(1,diag)
         matches,missing = match_boxes(expected,detected,self._p.matching,error_ratio)
+        if daylight is True:
+            matched_detections = set(matches.values())
+            unmatched = [box for j, box in enumerate(detected)
+                         if j not in matched_detections and box[4] >= self._p.policy.recovery_confidence]
+            if self._refs.extend_baseline(unmatched, self._matrix, stamp):
+                self._refs.scan_initial_gaps(stamp)
+                expected = warp_boxes(self._refs.boxes, self._matrix)
+                matches, missing = match_boxes(expected, detected, self._p.matching, error_ratio)
+        else:
+            self._refs.reset_pending()
         decisions,statistics = {},{}
         gray_frame = cv.cvtColor(frame,cv.COLOR_BGR2GRAY).astype(np.float32)
         previous = self._evidence_frame
@@ -401,7 +421,6 @@ class YoloWaterAlgorithm:
             change = gray_frame-previous
             delta = np.abs(change-np.median(change))
         for index,identity in enumerate(self._refs.identities):
-            hold = False
             accumulated_value = 'unknown'
             if not visible_box(expected[index],frame.shape,self._p.motion.min_visible_ratio):
                 value,detail = 'unknown',dict(reason='outside_view',eligible_for_accumulation=False)
@@ -418,13 +437,13 @@ class YoloWaterAlgorithm:
                         self._presence_patches[identity] = dict(created=stamp,pixels=patch.tolist())
                     self._refs.verify_slot(index,stamp)
             else:
-                value,detail,hold = self._classify_absence(frame,gray_frame,delta,expected,index,
+                value,detail = self._classify_absence(frame,gray_frame,delta,expected,index,
                     matches,identity,daylight,stamp)
                 if detail['eligible_for_accumulation']:
                     accumulated_value = 'suspect'
             self._histories.setdefault(identity,History(self._p)).observe(stamp,value)
             result = self._histories[identity].result(stamp)
-            accumulated = self._accumulation.observe(identity,stamp,accumulated_value,daylight,hold)
+            accumulated = self._accumulation.observe(identity,stamp,accumulated_value,daylight)
             confirmed = daylight is True and result['alarm']
             timeout = daylight is True and accumulated_value == 'suspect' and accumulated['timeout']
             result.update(alarm=bool(confirmed or timeout),recovered=accumulated['recovered'],
@@ -440,10 +459,15 @@ class YoloWaterAlgorithm:
         self._status = 'ok'
         self._annots = self._detection_annots(detected,matches)
         events = []
-        for group in missing_groups(missing,self._refs.rows):
+        active_indices = {index for index in missing if daylight is True
+            and decisions[index]['value'] == 'missing'
+            and self._episodes.records.get(self._refs.identities[index], {}).get('active')}
+        groups = (missing_groups(active_indices, self._refs.rows)
+                  + missing_groups(set(missing) - active_indices, self._refs.rows))
+        for group in groups:
             ids = [self._refs.identities[i] for i in group]
             box = list(map(int,union_box([expected[i] for i in group])))
-            active = daylight and any(self._episodes.records.get(i,{}).get('active') for i in ids)
+            active = group[0] in active_indices
             level = 'alarm' if active else 'suspected'
             causes = sorted({decisions[i]['reason'] for i in group})
             short_ids = ','.join(i.rsplit(':',1)[-1] for i in ids)
@@ -451,7 +475,7 @@ class YoloWaterAlgorithm:
                 short_ids = ids[0].rsplit(':',1)[-1]+'+'+str(len(ids)-1)
             abbreviations = dict(small_target_unresolved='small',background_unresolved='unresolved',
                 lighting_pending='light_pending',suspected_occlusion='occlusion',
-                suspected_occlusion_held='occlusion_held',initial_arrangement_gap='initial_gap',
+                initial_arrangement_gap='initial_gap',
                 night_missing_candidate='night_candidate')
             label = ('error ' if active else 'suspect ') + short_ids + ' ' + '/'.join(abbreviations.get(c,c) for c in causes)
             self._annots.append(Annotation(kind='box',box=tuple(box),label=label,level=level))
@@ -508,15 +532,7 @@ class YoloWaterAlgorithm:
         box = expected[index]
         detail = dict(eligible_for_accumulation=False,inferred_slot=index in self._refs.inferred_indices)
         if daylight is None:
-            return 'unknown',dict(detail,reason='lighting_pending'),False
-        if min(box[2]-box[0],box[3]-box[1]) < cfg.patch_px:
-            return 'unknown',dict(detail,reason='small_target_unresolved'),False
-        if detail['inferred_slot']:
-            return 'unknown',dict(detail,reason='initial_arrangement_gap',eligible_for_accumulation=True),False
-        held = self._accumulation.records.get(identity,{}).get('occlusion_held',False)
-        if held:
-            return 'unknown',dict(detail,reason='suspected_occlusion_held',occlusion_held=True,
-                                  eligible_for_accumulation=True),False
+            return 'unknown',dict(detail,reason='lighting_pending')
         road,evidence = self._vision.road_evidence(frame,expected,index,matches,
                                                   self._refs.rows,self._previous_missing)
         detail.update(evidence=evidence)
@@ -541,16 +557,19 @@ class YoloWaterAlgorithm:
         occlusion = (cause == 'occluded' or (cause == 'simultaneous_disappearance' and daylight is True)
                      or (not road and changed and evidence.get('neighbor_ratio',0) >= cfg.neighbor_ratio))
         if occlusion:
-            return 'unknown',dict(detail,reason='suspected_occlusion',occlusion_held=True,
-                                  eligible_for_accumulation=True),True
+            return 'unknown',dict(detail,reason='suspected_occlusion')
         if road and not moving:
             return ('missing' if daylight is True else 'unknown'),dict(detail,
                 reason='road_exposed' if daylight is True else 'night_missing_candidate',
-                eligible_for_accumulation=True),False
-        return 'unknown',dict(detail,reason='region_changing' if moving else 'background_unresolved'),False
+                eligible_for_accumulation=not detail['inferred_slot'])
+        reason = ('small_target_unresolved' if cause == 'small_or_outside'
+                  else 'region_changing' if moving
+                  else 'initial_arrangement_gap' if detail['inferred_slot'] else 'background_unresolved')
+        return 'unknown',dict(detail,reason=reason)
 
     def _unknown(self, stamp):
         self._annots = []
+        self._refs.reset_pending()
         self._accumulation.pause()
         self._daylight.pause()
         self._last_decisions = {}
@@ -572,7 +591,7 @@ class YoloWaterAlgorithm:
         self._store.snapshot(stamp,dict(references=references,
              episodes=self._episodes.dump(),histories={i:h.dump() for i,h in self._histories.items()},
              motion_state=self._motion.state,previous_references=self._old_refs.dump() if self._old_refs else None,
-             policy_version=3,applied_offsets=[list(t) for t in self._applied_offsets],accumulation=self._accumulation.dump(),
+             policy_version=POLICY_VERSION,applied_offsets=[list(t) for t in self._applied_offsets],accumulation=self._accumulation.dump(),
              lighting=self._daylight.dump(),presence_patches=self._presence_patches,
              daylight=self._is_daylight,daylight_streak=self._daylight.streak,
              model_sha256=self._model_sha))
@@ -616,6 +635,7 @@ class YoloWaterAlgorithm:
                     raise ValueError('Invalid corrected water box')
                 boxes[index] = box.tolist()
         self._refs.boxes = boxes
+        self._refs.reset_pending()
         self._target_reference=result.new_reference
         self._matrix = np.eye(3)
         self._histories = {}

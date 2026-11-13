@@ -68,10 +68,9 @@ class Accumulation:
         self._p = params
         self.records = records or {}
 
-    def observe(self, identity, stamp, value, daylight, hold=False):
+    def observe(self, identity, stamp, value, daylight):
         record = self.records.setdefault(identity, dict(day_s=0.0, night_s=0.0,
-            present_run=0, last_observation=None, last_seen=None, night_last_seen=None,
-            occlusion_held=False))
+            present_run=0, last_observation=None, last_seen=None, night_last_seen=None))
         last = record['last_observation']
         period = self._p.timing.period_s
         if last is not None and stamp-last < period:
@@ -90,10 +89,9 @@ class Accumulation:
                 record['last_seen'] = stamp
             if value == 'suspect' and daylight is not None:
                 record['day_s' if daylight else 'night_s'] += period
-                record['occlusion_held'] = record['occlusion_held'] or hold
         recovered = record['present_run'] >= math.ceil(self._p.statistics.recovery_s/period)
         if recovered:
-            record.update(day_s=0.0, night_s=0.0, occlusion_held=False)
+            record.update(day_s=0.0, night_s=0.0)
         return self.result(identity, daylight)
 
     def result(self, identity, daylight):
@@ -103,7 +101,7 @@ class Accumulation:
         total = r['day_s'] + credit
         return dict(day_s=r['day_s'], night_s=r['night_s'], night_credit_s=credit,
             equivalent_day_s=total, required_day_s=cfg.suspect_day_s,
-            occlusion_held=r['occlusion_held'], last_seen=r['last_seen'],
+            last_seen=r['last_seen'],
             night_last_seen=r['night_last_seen'],
             recovered=r['present_run'] >= math.ceil(self._p.statistics.recovery_s/self._p.timing.period_s),
             timeout=bool(daylight is True and total >= cfg.suspect_day_s))

@@ -98,6 +98,8 @@ class Inference:
     # 用户选定V6；与离线比较采用相同的方形输入和单尺度重叠分块。
     weights: Path = PROJECT / 'models/water_barrier_v6/best.pt'
     tile_px: int = 960
+    detail_tile_px: int = 576
+    supplementary_iou: float = 0.30
     overlap: float = 0.25
     imgsz: int = 960
     rect: bool = False
@@ -123,6 +125,7 @@ class Matching:
 @dataclass(frozen=True)
 class Evidence:
     patch_px: int = 12
+    min_patch_px: int = 4
     band_height_ratio: float = 0.8
     min_road_patches: int = 6
     min_road_fraction: float = 0.65
@@ -131,6 +134,7 @@ class Evidence:
     max_texture_ratio: float = 3.0
     texture_floor: float = 5.0
     neighbor_ratio: float = 0.60
+    min_visible_neighbors: int = 2
     history_motion_ratio: float = 0.12
     motion_luma_delta: float = 25.0
     simultaneous_min: int = 2
@@ -573,6 +577,8 @@ class Params:
                 and self.timing.fast_s > 0 and self.timing.rebuild_periods > 0):
             raise ValueError('Invalid timing parameters')
         if not (0 <= self.inference.overlap < 1 and self.inference.tile_px > 0
+                and 0 < self.inference.detail_tile_px <= self.inference.tile_px
+                and 0 < self.inference.supplementary_iou <= 1
                 and 0 < self.inference.confidence <= 1 and self.inference.imgsz > 0):
             raise ValueError('Invalid inference parameters')
         if not (0 < self.statistics.min_coverage <= 1
@@ -583,7 +589,9 @@ class Params:
                 and self.motion.jitter_ceiling >= self.motion.jitter_floor > 0
                 and self.storage.retention_s > self.reference.refresh_s > 0):
             raise ValueError('Invalid motion/retention parameters')
-        if not (self.evidence.patch_px > 0 and self.reference.min_baseline_observations > 0
+        if not (0 < self.evidence.min_patch_px <= self.evidence.patch_px
+                and self.evidence.min_visible_neighbors > 0
+                and self.reference.min_baseline_observations > 0
                 and self.reference.max_baseline_observations >= self.reference.min_baseline_observations
                 and self.reference.per_light > 0 and self.motion.grid > 0
                 and 0 < self.motion.min_cells <= self.motion.grid**2

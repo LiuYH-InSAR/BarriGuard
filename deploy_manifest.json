@@ -594,9 +594,9 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_detector.py",
-      "bytes": 3088,
+      "bytes": 3901,
       "hash_mode": "text_lf",
-      "sha256": "d42a549961ac16a4e4eb5ef4bf3c34816fc4e1139a0ef349badd2d4beabcf065",
+      "sha256": "6c7e36631bfb80f1464ff201d11b6b01a236bbf673319c8057ef59316314eb89",
       "configurable": false
     },
     {
@@ -615,30 +615,30 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_params.py",
-      "bytes": 24163,
+      "bytes": 24538,
       "hash_mode": "text_lf",
-      "sha256": "4e2809e7cc768da61347a67e10fd3a28a1f01642e5357c4af7a030f7e2f44364",
+      "sha256": "d17b26048a5d03fc1e58a1121dba877bb478a31e28bb5bffc2450f1e6271d878",
       "configurable": true
     },
     {
       "path": "deploy/app/water_barrier/yolo_pipeline.py",
-      "bytes": 36380,
+      "bytes": 37305,
       "hash_mode": "text_lf",
-      "sha256": "c6a7e8d33f7783c56989670ed56fb96f98ec7fa3d4f259390ac76c086900cd7c",
+      "sha256": "0c75956ccd9e905d277d0727026b1e11c02298e3733b9f593c3dd08c59fb16f6",
       "configurable": false
     },
     {
       "path": "deploy/app/water_barrier/yolo_policy.py",
-      "bytes": 5180,
+      "bytes": 5000,
       "hash_mode": "text_lf",
-      "sha256": "e4add6599854e124ab5b90ae7c583129a886aa0016a7cace7aa7a49bf7a93429",
+      "sha256": "b6bd277b2094b845507abff6e4e855c60c890ac014f691d6f9c03e0bd4a32ee1",
       "configurable": false
     },
     {
       "path": "deploy/app/water_barrier/yolo_reference.py",
-      "bytes": 8505,
+      "bytes": 10191,
       "hash_mode": "text_lf",
-      "sha256": "6ae1b61871f9261e97e6fefae62a7638346497e500607c68c17b644a8f8142fa",
+      "sha256": "838b2458de487621b05e623996af020eaf9ef9688fe520b642d361c4efdcb1ef",
       "configurable": false
     },
     {
@@ -650,9 +650,9 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_vision.py",
-      "bytes": 3905,
+      "bytes": 4213,
       "hash_mode": "text_lf",
-      "sha256": "52722b72a4c5b4f158612a75ba2cd63c540d0a604e8c6840a8b03606840a44e3",
+      "sha256": "bac5c177cf86319f256e9207538bc747523005bce12680113666b3bcde158ba2",
       "configurable": false
     },
     {
@@ -808,6 +808,13 @@
       "configurable": false,
       "bytes": 4924,
       "sha256": "32a20f03ac2ee7048f02b41f2b5f837f91b961aa7b86563658cba4d3c60f2588"
+    },
+    {
+      "path": "deploy/tests/test_water_gap_regression.py",
+      "bytes": 6226,
+      "hash_mode": "text_lf",
+      "sha256": "124de5d7c49aeac380de71cda12acbdd28b47bd79e2f978da585cb0e28ab4ae5",
+      "configurable": false
     },
     {
       "path": "models/lamp_v7/README.md",
