@@ -50,6 +50,10 @@ class Store:
     def snapshot(self, stamp, data):
         self._atomic(self.root/'current.json',dict(saved_at=stamp,**data))
 
+    def archive_baseline(self, data):
+        # Keep the previous layout independently of the rolling evidence files.
+        self._atomic(self.root/'previous_baseline.json', data)
+
     def load(self, stamp):
         path = self.root/'current.json'
         if not path.is_file():

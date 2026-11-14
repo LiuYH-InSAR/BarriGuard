@@ -56,8 +56,7 @@ class DayRunner:
             if isinstance(fs, str):
                 status = fs
 
-        vis = render.overlay(frame, mask) if mask is not None else frame
-        vis = render.draw_annots(vis, annots)
+        vis = render.draw_water_result(frame, annots, mask)
         ok, buf = cv.imencode(".jpg", vis, [cv.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if not ok:
             return None

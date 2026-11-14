@@ -8,6 +8,14 @@ from .yolo_geometry import build_rows, iou, match_boxes, warp_boxes, infer_initi
 from camera_motion.references import ReferenceLibrary
 
 
+def baseline_segment(box, shape):
+    """Image-space coverage indicator, independent of target confidence."""
+    height,width = shape[:2]
+    side = 'left' if box[0] + box[2] < width else 'right'
+    depth = 'far' if box[3] < height * .55 else 'near'
+    return f'{side}_{depth}'
+
+
 class References:
     def __init__(self, params, store, vision, library=None):
         self._p = params
@@ -21,6 +29,9 @@ class References:
         self.baseline_created = None
         self._candidates = []
         self._pending = []
+        self.rebuilding = False
+        self.rebuild_unmapped = False
+        self.carried_indices = []
         self.inferred_indices = []
         self.gap_scan_complete = False
 
@@ -38,6 +49,9 @@ class References:
         self.baseline_created = None
         self._candidates = []
         self.reset_pending()
+        self.rebuilding = False
+        self.rebuild_unmapped = False
+        self.carried_indices = []
         self.inferred_indices = []
         self.gap_scan_complete = False
         self.add_appearance(frame,stamp,quality,np.eye(3))
@@ -70,14 +84,15 @@ class References:
         self._candidates = self._candidates[-cfg.max_baseline_observations:]
         if len(self._candidates) < cfg.min_baseline_observations:
             return False
-        seed = self._candidates[0]
+        recent = self._candidates[-cfg.min_baseline_observations:]
+        seed = recent[0]
         samples = [[b] for b in seed]
-        for observation in self._candidates[1:]:
+        for observation in recent[1:]:
             matches,_ = match_boxes(seed,observation,self._p.matching)
             for a,b in matches.items():
                 samples[a].append(observation[b])
         stable = [np.median(v,axis=0).tolist() for v in samples
-                  if len(v)/len(self._candidates) >= cfg.baseline_presence]
+                  if len(v) == len(recent)]
         if len(stable) < cfg.min_barriers:
             return False
         self.boxes = stable
@@ -88,44 +103,106 @@ class References:
         return True
 
     def reset_pending(self):
+        self._candidates = []
         self._pending = []
 
-    def extend_baseline(self, unmatched, anchor_to_frame, stamp):
-        """Register repeatedly visible new slots in the existing reference view."""
+    def _track_observed_slots(self, boxes):
+        """Collect independent observations; a missed sample breaks a track."""
         cfg = self._p
-        threshold = cfg.inference.supplementary_iou
-        boxes = warp_boxes(unmatched, np.linalg.inv(anchor_to_frame))
-        boxes = [box for box in boxes
-                 if not any(iou(box, old) >= threshold for old in self.boxes)]
-        matches, _ = match_boxes([samples[-1] for samples in self._pending], boxes,
+        matches, _ = match_boxes([samples[0] for samples in self._pending], boxes,
                                  cfg.matching)
         pending = [self._pending[i] + [boxes[j]] for i, j in matches.items()]
         used = set(matches.values())
         pending.extend([box] for j, box in enumerate(boxes) if j not in used)
-        self._pending = []
+        required = cfg.reference.min_baseline_observations
+        self._pending = [samples[-required:] for samples in pending]
+        return [np.median(samples, axis=0).tolist()
+                for samples in self._pending if len(samples) >= required]
+
+    @property
+    def pending_observations(self):
+        return max((len(samples) for samples in self._pending), default=len(self._candidates))
+
+    def rebuild_baseline(self, detected, anchor_to_frame, stamp):
+        """Confirm positions incrementally while retaining unmatched migrated slots."""
+        expected = warp_boxes(self.boxes, anchor_to_frame)
+        provisional = set(self.carried_indices) | set(self.inferred_indices)
+        matches, _ = match_boxes(expected, detected, self._p.matching)
+        confirmed = {j for i, j in matches.items() if i not in provisional}
+        return self.extend_baseline([box for j, box in enumerate(detected) if j not in confirmed],
+                                    anchor_to_frame, stamp)
+
+    def finish_rebuild(self, shape, stamp, confirmed_missing=()):
+        """Close a mapped rebuild when each inherited position is accounted for."""
+        if not self.rebuilding or set(self.carried_indices).difference(confirmed_missing):
+            return
+        measured = [box for i, box in enumerate(self.boxes) if i not in self.inferred_indices]
+        if len(measured) < self._p.reference.min_barriers:
+            return
+        if self.rebuild_unmapped and len({baseline_segment(box,shape) for box in measured}) < 4:
+            return
+        completed = self.baseline_dump()
+        completed.pop('rebuild_unmapped', None)
+        completed['rebuilding'] = False
+        self._store.record('baselines', stamp, completed)
+        self.rebuilding = self.rebuild_unmapped = False
+
+    def extend_baseline(self, unmatched, anchor_to_frame, stamp):
+        """Register repeatedly visible new slots in the existing reference view."""
+        cfg = self._p
+        threshold = cfg.reference.slot_overlap_iou
+        boxes = warp_boxes(unmatched, np.linalg.inv(anchor_to_frame))
+        provisional = sorted(set(self.carried_indices) | set(self.inferred_indices))
+        measured = [box for i, box in enumerate(self.boxes) if i not in provisional]
+        stable = self._track_observed_slots([box for box in boxes
+                  if not any(iou(box, old) >= threshold for old in measured)])
+        matches, _ = match_boxes([self.boxes[i] for i in provisional],
+                                 stable, cfg.matching)
+        confirmed = []
+        for index, observed in matches.items():
+            slot = provisional[index]
+            self.boxes[slot] = stable[observed]
+            confirmed.append(slot)
+        self.carried_indices = [i for i in self.carried_indices if i not in confirmed]
+        self.inferred_indices = [i for i in self.inferred_indices if i not in confirmed]
+        used = set(matches.values())
+        added = self._append_slots(box for j, box in enumerate(stable) if j not in used)
+        if added or confirmed:
+            self._save_layout(stamp)
+        return added or bool(confirmed)
+
+    def _append_slots(self, boxes):
+        cfg = self._p
+        identities = set(self.identities)
+        next_id = len(self.boxes)
         added = False
-        for samples in pending:
-            if len(samples) < cfg.reference.min_baseline_observations:
-                self._pending.append(samples)
-                continue
-            box = np.median(samples, axis=0).tolist()
+        for box in boxes:
             if (len(self.boxes) >= cfg.initial_gaps.max_slots
-                    or any(iou(box, old) >= threshold for old in self.boxes)):
+                    or any(iou(box, old) >= cfg.reference.slot_overlap_iou for old in self.boxes)):
                 continue
-            self.identities.append(f'{self.view}:B{len(self.boxes)}')
+            while f'{self.view}:B{next_id}' in identities:
+                next_id += 1
+            self.identities.append(f'{self.view}:B{next_id}')
+            next_id += 1
             self.boxes.append(box)
             added = True
-        if added:
-            self.rows = build_rows(self.boxes, cfg.reference)
-            self.baseline_created = stamp
-            self.gap_scan_complete = False
-            self._store.record('baselines', stamp, self.baseline_dump())
         return added
 
+    def _save_layout(self, stamp):
+        self.rows = build_rows(self.boxes, self._p.reference)
+        self.baseline_created = stamp
+        self.gap_scan_complete = False
+        self._store.record('baselines', stamp, self.baseline_dump())
+
     def baseline_dump(self):
-        return dict(view=self.view,boxes=self.boxes,rows=self.rows,identities=self.identities,
+        data = dict(view=self.view,boxes=self.boxes,rows=self.rows,identities=self.identities,
                     baseline_created=self.baseline_created,inferred_indices=self.inferred_indices,
                     gap_scan_complete=self.gap_scan_complete)
+        if self.rebuilding or self.carried_indices:
+            data.update(rebuilding=self.rebuilding, carried_indices=self.carried_indices)
+        if self.rebuilding:
+            data['rebuild_unmapped'] = self.rebuild_unmapped
+        return data
 
     def scan_initial_gaps(self, stamp):
         if self.gap_scan_complete or not self.boxes:
@@ -137,20 +214,21 @@ class References:
         first = len(self.boxes)
         self.boxes.extend(gaps)
         self.inferred_indices.extend(range(first,len(self.boxes)))
-        self.identities.extend(f'{self.view}:G{i}' for i in range(len(gaps)))
+        self.identities.extend(f'{self.view}:G{i}' for i in range(first, len(self.boxes)))
         self.rows = build_rows(self.boxes,self._p.reference)
         self.gap_scan_complete = True
         self._store.record('baselines',stamp,self.baseline_dump())
-
-    def verify_slot(self, index, stamp):
-        if index in self.inferred_indices:
-            self.inferred_indices.remove(index)
-            self._store.record('baselines',stamp,self.baseline_dump())
 
     def dump(self):
         return dict(**self.baseline_dump(),appearances=self.appearances,last_refresh=self.last_refresh)
 
     def restore(self, data, stamp):
+        self.rebuilding = data.get('rebuilding', False)
+        self.carried_indices = data.get('carried_indices', [])
+        self.rebuild_unmapped = data.get('rebuild_unmapped', self.rebuilding and not data.get('boxes'))
+        if self.rebuilding and 'rebuild_unmapped' not in data and not self.carried_indices:
+            inferred = set(data.get('inferred_indices', []))
+            self.carried_indices = [i for i in range(len(data.get('boxes', []))) if i not in inferred]
         if self.shared:
             if (self.library.anchor is not None and self.library.view != data['view']
                     and data['view'] not in getattr(self.library,'migration_sources',())):
@@ -180,7 +258,7 @@ class References:
             self.inferred_indices=data.get('inferred_indices',[])
             self.gap_scan_complete=data.get('gap_scan_complete',False)
             self.baseline_created=data.get('baseline_created')
-            return bool(self.boxes) and not self.expired(stamp)
+            return (bool(self.boxes) or self.rebuilding) and not self.expired(stamp)
         self.view = data['view']
         self.boxes = data.get('boxes',[])
         self.rows = data.get('rows',[])

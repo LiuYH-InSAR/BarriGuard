@@ -84,7 +84,7 @@ class BlockAlgorithm:
         chosen = min(candidates,key=lambda r:(r['motion'],-r['blocks'][label]['valid']))
         from server import render
         results = [dict(b,status='error') if b['label']==label else b for b in chosen['blocks'].values()]
-        image = render.draw_annots(chosen['frame'],self._annots(results))
+        image = render.draw_water_result(chosen['frame'],self._annots(results))
         ok, encoded = cv.imencode('.jpg',image,[cv.IMWRITE_JPEG_QUALITY,JPEG_QUALITY])
         return (encoded.tobytes() if ok else None),chosen['time']
 

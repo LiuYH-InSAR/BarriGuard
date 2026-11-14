@@ -110,5 +110,42 @@ class ReleaseLifecycle(unittest.TestCase):
         self.worker._check_stream_health(610.)
         self.assertEqual(len(self.worker.events()),2)
 
+    def test_stream_loss_freezes_preview_and_logs_frame_times(self):
+        from unittest.mock import Mock, patch
+        from server import render
+        import cv2 as cv
+        import numpy as np
+
+        frame = np.zeros((80, 220, 3), np.uint8)
+        _, jpeg = cv.imencode('.jpg', frame)
+        self.worker._vis = jpeg.tobytes()
+        self.worker._debug = {'frame_status': 'ok'}
+        original = self.worker._vis
+        last = datetime(2026, 11, 13, 12, tzinfo=HK)
+        first = last + timedelta(seconds=12)
+        health = dict(connected=False, last_frame_mono=0., last_frame_at=last)
+        self.worker._reader = NS(health=lambda: health)
+        water = NS(algo=Mock())
+        self.worker._day_runners['water_gap'] = water
+        with patch.object(render, 'draw_stream_lost', wraps=render.draw_stream_lost) as overlay:
+            self.worker._check_stream_health(10.)
+            overlay.assert_called_once()
+        shown, debug = self.worker.latest()
+        self.assertNotEqual(shown, original)
+        self.assertEqual(self.worker._vis, original)
+        self.assertEqual(debug, {'frame_status': 'ok'})
+        water.algo.resume_stream.assert_not_called()
+        health.update(connected=True, last_frame_mono=12.5,
+                      last_frame_at=first + timedelta(seconds=.5),
+                      first_after_disconnect=(12., first))
+        self.worker._check_stream_health(12.5)
+        water.algo.resume_stream.assert_called_once()
+        self.assertEqual(self.worker.latest()[0], shown)
+        lost, restored = [e['payload'] for e in self.worker.events()]
+        self.assertEqual(lost['last_frame_at'], last.isoformat())
+        self.assertEqual(restored['detected_at'], lost['detected_at'])
+        self.assertEqual(restored['restored_frame_at'], first.isoformat())
+        self.assertEqual(restored['duration_s'], 12.)
+
 
 if __name__=='__main__':unittest.main()

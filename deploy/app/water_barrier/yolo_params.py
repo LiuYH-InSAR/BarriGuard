@@ -91,6 +91,7 @@ class Reference:
     min_barriers: int = 2
     row_vertical_ratio: float = 0.75
     row_distance_ratio: float = 2.5
+    slot_overlap_iou: float = 0.30
 
 
 @dataclass(frozen=True)
@@ -98,8 +99,6 @@ class Inference:
     # 用户选定V6；与离线比较采用相同的方形输入和单尺度重叠分块。
     weights: Path = PROJECT / 'models/water_barrier_v6/best.pt'
     tile_px: int = 960
-    detail_tile_px: int = 576
-    supplementary_iou: float = 0.30
     overlap: float = 0.25
     imgsz: int = 960
     rect: bool = False
@@ -577,8 +576,6 @@ class Params:
                 and self.timing.fast_s > 0 and self.timing.rebuild_periods > 0):
             raise ValueError('Invalid timing parameters')
         if not (0 <= self.inference.overlap < 1 and self.inference.tile_px > 0
-                and 0 < self.inference.detail_tile_px <= self.inference.tile_px
-                and 0 < self.inference.supplementary_iou <= 1
                 and 0 < self.inference.confidence <= 1 and self.inference.imgsz > 0):
             raise ValueError('Invalid inference parameters')
         if not (0 < self.statistics.min_coverage <= 1
@@ -606,6 +603,7 @@ class Params:
                 and self.statistics.cooldown_s > 0 and self.matching.max_center_ratio >= self.matching.center_ratio > 0
                 and 0 < self.matching.min_size_ratio <= self.matching.max_size_ratio
                 and 0 < self.reference.baseline_presence <= 1
+                and 0 < self.reference.slot_overlap_iou <= 1
                 and 0 <= self.reference.max_unresolved_fraction <= 1):
             raise ValueError('Invalid matching/recovery parameters')
         return self

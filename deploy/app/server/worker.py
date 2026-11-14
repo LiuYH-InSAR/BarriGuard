@@ -6,6 +6,7 @@ from collections import deque
 from datetime import datetime
 
 import cv2 as cv
+import numpy as np
 from loguru import logger
 
 from . import registry, render
@@ -13,14 +14,13 @@ from .contracts import ScheduleState
 from .schedule import (
     Clock, RealClock, RuntimeEvent, RuntimeEventType, Scheduler,
 )
-from .source import Reader
+from .source import Reader, STREAM_LOST_AFTER_S
 
 LOG_EVERY = 100
 EVENTS_KEPT = 200
 PUMP_INTERVAL_S = 0.5
 TICK_PERIOD_S = 0.02
 STOP_JOIN_TIMEOUT_S = 5.0
-STREAM_LOST_AFTER_S = 10.0
 STREAM_HEARTBEAT_S = 600.0
 
 DAY_DIAG_PERIOD_S = 300.0
@@ -165,6 +165,8 @@ class CameraWorker:
         self._stop = threading.Event()
         self._stream_lost = False
         self._stream_last_emit = None
+        self._stream_loss = None
+        self._stream_lost_vis = None
         self._thread = threading.Thread(target=self._loop, daemon=True,
                                         name=f"cam-{self.id}")
         self._ticker = threading.Thread(target=self._tick_loop, daemon=True,
@@ -208,7 +210,8 @@ class CameraWorker:
 
     def latest(self):
         with self._lock:
-            return self._vis, dict(self._debug)
+            jpeg = self._stream_lost_vis if self._stream_lost_vis is not None else self._vis
+            return jpeg, dict(self._debug)
 
     def status(self):
         with self._lock:
@@ -291,17 +294,30 @@ class CameraWorker:
         # state alone must neither hide that outage nor announce recovery.
         if info.get("connected") and last_frame is not None and not stale:
             if self._stream_lost:
+                last = (self._stream_loss or {}).get("last_frame_mono")
+                if last is not None and last_frame <= last:
+                    return
                 self._stream_lost = False
                 self._stream_last_emit = now_mono
+                water = self._day_runners.get("water_gap")
+                resume = getattr(getattr(water, "algo", None), "resume_stream", None)
+                if callable(resume):
+                    resume()
+                if self._offset_runtime is not None:
+                    self._offset_runtime.resume_stream(now_mono)
                 self._set_status("OK")
                 self._emit_status("stream_restored", info)
+                self._stream_loss = None
             return
         if ref is None or not stale:
             return
         if not self._stream_lost:
             self._stream_lost = True
             self._stream_last_emit = now_mono
+            self._stream_loss = dict(last_frame_at=info.get("last_frame_at"),
+                                     last_frame_mono=last_frame, detected_at=self._clock.wall())
             self._set_status("STREAM_LOST")
+            self._mark_lost_preview()
             self._emit_status("stream_lost", info)
             return
         last_emit = self._stream_last_emit if self._stream_last_emit is not None else now_mono
@@ -315,12 +331,39 @@ class CameraWorker:
 
     def _emit_status(self, status: str, health: dict):
         # 仅保留内部可观测（/events 与画面角标）；不对外推送 camera_status。
+        now = self._clock.wall()
+        loss = self._stream_loss or {}
+        payload = {"status": status}
+        for field in ("last_frame_at", "detected_at"):
+            value = loss.get(field)
+            payload[field] = value.isoformat() if value is not None else None
+        if status == "stream_restored":
+            first = health.get("first_after_disconnect")
+            last_mono = loss.get("last_frame_mono")
+            if first is None or (last_mono is not None and first[0] <= last_mono):
+                first = (health["last_frame_mono"], health.get("last_frame_at"))
+            payload["restored_frame_at"] = first[1].isoformat() if first[1] is not None else None
+            payload["duration_s"] = round(first[0] - last_mono, 3) if last_mono is not None else None
         with self._lock:
-            self._events.append({"ts": datetime.now().astimezone().isoformat(),
+            self._events.append({"ts": now.isoformat(),
                                  "algo": "stream", "kind": "status",
-                                 "payload": {"status": status},
+                                 "payload": payload,
                                  "evidence_path": None})
-        logger.warning("[{}] 流状态: {}", self.id, status)
+        logger.warning("[{}] 流状态: {} {}", self.id, status, payload)
+
+    def _mark_lost_preview(self):
+        with self._lock:
+            jpeg = self._vis
+        if not jpeg:
+            return
+        vis = cv.imdecode(np.frombuffer(jpeg, np.uint8), cv.IMREAD_COLOR)
+        if vis is None:
+            return
+        ok, buf = cv.imencode(".jpg", render.draw_stream_lost(vis),
+                              [cv.IMWRITE_JPEG_QUALITY, self._quality])
+        if ok:
+            with self._lock:
+                self._stream_lost_vis = buf.tobytes()
 
     def freeze_night(self):
         """NIGHT_FREEZE：停止累积（各 session 冻结）。"""
@@ -454,12 +497,15 @@ class CameraWorker:
         t0, n0 = time.time(), 0
         last_decoded_id = object()
         while not self._stop.is_set():
+            self._check_stream_health(self._clock.monotonic())
+            if self._stream_lost:
+                self._stop.wait(0.01)
+                continue
             sample=getattr(self._reader,'sample',None)
             if callable(sample):
                 frame,frame_id,source_ts=sample()
             else:
                 frame=self._reader.read();frame_id=None;source_ts=None
-            self._check_stream_health(self._clock.monotonic())
             now_wall = self._clock.wall()
             now_mono = self._clock.monotonic()
             _seq_fn = getattr(self._reader, "seq", None)
@@ -514,8 +560,11 @@ class CameraWorker:
                     self._diag_last[name] = now_mono
 
             mask = debug.get("roi_mask")
-            vis = render.draw_annots(
-                render.overlay(frame, mask) if mask is not None else frame, annots)
+            if "water_gap" in self._day_runners:
+                vis = render.draw_water_result(frame, annots, mask)
+            else:
+                vis = render.draw_annots(
+                    render.overlay(frame, mask) if mask is not None else frame, annots)
             vis = render.draw_status(vis, status)
             alarming = any(e.kind == "alarm" for e in events)
             states = "+".join(sorted({a.level for a in annots}))
@@ -536,6 +585,7 @@ class CameraWorker:
                     logger.exception("[{}] submit_event 失败", self.id)
             with self._lock:
                 self._vis = buf.tobytes() if ok else None
+                self._stream_lost_vis = None
                 self._debug = debug
                 self._status = status
                 self._events.extend({"ts": e.ts, "algo": e.algo, "kind": e.kind,

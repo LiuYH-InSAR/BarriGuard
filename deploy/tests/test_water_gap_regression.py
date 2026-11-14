@@ -1,6 +1,7 @@
 """Replay the occlusion and incomplete baseline failures with a controlled clock."""
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 import sys
 from tempfile import TemporaryDirectory
 import unittest
@@ -9,6 +10,7 @@ from unittest.mock import Mock
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
+from camera_motion.contracts import MotionResult
 from water_barrier.yolo_params import PARAMS
 from water_barrier.yolo_pipeline import YoloWaterAlgorithm
 from water_barrier.yolo_store import Store
@@ -33,6 +35,7 @@ class WaterGapRegression(unittest.TestCase):
                            night_credit_s=0.))
         self.detector = Mock()
         self.vision = Mock()
+        self.vision.road_profile.return_value = None
         self.algo = self.make_algorithm()
 
     def make_algorithm(self):
@@ -92,7 +95,7 @@ class WaterGapRegression(unittest.TestCase):
         self.assertEqual(len(self.algo._refs.boxes), 2)
         self.tick([self.neighbor, added])
         self.assertEqual(len(self.algo._refs.boxes), 3)
-        def evidence(frame, boxes, index, *args):
+        def evidence(frame, boxes, index, *args, **kwargs):
             return (True, dict(reason='road_exposed')) if index == 2 else (False, dict(reason='occluded'))
         self.vision.road_evidence.side_effect = evidence
         self.tick([self.neighbor])
@@ -100,15 +103,124 @@ class WaterGapRegression(unittest.TestCase):
         events = self.tick([self.neighbor])
         self.assertEqual(events[0].payload['barrier_ids'], ['test:B2'])
 
-    def test_inferred_slot_requires_road_evidence(self):
+    def test_inferred_slot_needs_a_real_detection_before_it_can_alarm(self):
         self.algo._refs.inferred_indices = [0]
         self.vision.road_evidence.return_value = False, dict(reason='occluded')
         for _ in range(5):
             self.assertFalse(self.tick([self.neighbor]))
         self.vision.road_evidence.return_value = True, dict(reason='road_exposed')
+        for _ in range(5):
+            self.assertFalse(self.tick([self.neighbor]))
+        for _ in range(self.params.reference.min_baseline_observations - 1):
+            self.tick([self.neighbor, self.box + [.9]])
+        self.assertIn(0, self.algo._refs.inferred_indices)
+        self.tick([self.neighbor, self.box + [.9]])
+        self.assertNotIn(0, self.algo._refs.inferred_indices)
         self.assertFalse(self.tick([self.neighbor]))
         self.assertFalse(self.tick([self.neighbor]))
         self.assertEqual(self.tick([self.neighbor])[0].payload['error_reason'], 'confirmed_missing')
+
+    def test_unaligned_detections_remain_visible_without_updating_baseline(self):
+        self.algo._alignment_ok = False
+        self.assertFalse(self.tick([self.neighbor]))
+        self.assertEqual(len(self.algo._refs.boxes), 2)
+        self.assertEqual(len(self.algo._annots), 1)
+        self.assertTrue(self.algo._annots[0].label.startswith('Suspect - Uncalibrated'))
+        self.vision.road_evidence.assert_not_called()
+
+    def test_reconnect_discards_pre_loss_missing_evidence(self):
+        self.vision.road_evidence.return_value = True, dict(reason='road_exposed')
+        self.assertFalse(self.tick([self.neighbor]))
+        self.assertFalse(self.tick([self.neighbor]))
+        self.algo.resume_stream()
+        self.assertFalse(self.algo._alignment_ok)
+        self.assertEqual(self.algo._histories, {})
+        self.assertEqual(self.algo._refs.boxes, [self.box, self.neighbor[:4]])
+        self.algo._alignment_ok = True
+        for _ in range(3):
+            self.assertFalse(self.tick([self.neighbor]))
+        self.assertEqual(self.tick([self.neighbor])[0].payload['error_reason'], 'confirmed_missing')
+
+    def test_migrated_baseline_is_replaced_by_independent_observations(self):
+        self.algo._refs.rebuilding = True
+        self.algo._refs.carried_indices = [0, 1]
+        new = [80., 12., 94., 36., .9]
+        moved_neighbor = [22., 12., 34., 36., .9]
+        self.vision.road_evidence.return_value = False, dict(reason='occluded')
+        for _ in range(self.params.reference.min_baseline_observations - 1):
+            self.tick([moved_neighbor, new])
+            self.assertTrue(self.algo._refs.rebuilding)
+            self.assertEqual(self.algo._refs.boxes[1], self.neighbor[:4])
+        self.tick([moved_neighbor, new])
+        self.assertTrue(self.algo._refs.rebuilding)
+        self.assertEqual(self.algo._refs.identities[:2], ['test:B6', 'test:B7'])
+        self.assertEqual(self.algo._refs.boxes[:2], [self.box, moved_neighbor[:4]])
+        self.assertEqual(self.algo._refs.carried_indices, [0])
+        self.assertEqual(self.algo.status()['baseline_coverage'],
+                         dict(left='partial', right='calibrated'))
+        self.tick([self.box + [.9], moved_neighbor, new])
+        self.assertEqual(self.algo._refs.carried_indices, [0])
+        for _ in range(self.params.reference.min_baseline_observations - 1):
+            self.tick([self.box + [.9], moved_neighbor, new])
+        self.assertEqual(self.algo._refs.carried_indices, [])
+        self.assertFalse(self.algo._refs.rebuilding)
+
+    def test_unmapped_rebuild_reports_far_and_right_independently(self):
+        refs = self.algo._refs
+        refs.boxes, refs.identities, refs.rows = [], [], []
+        refs.rebuilding = refs.rebuild_unmapped = True
+        left_near = [[5., 62., 17., 86., .9], [20., 62., 32., 86., .9]]
+        for _ in range(5):
+            self.tick(left_near)
+        self.assertTrue(refs.rebuilding)
+        self.assertEqual(self.algo.status()['baseline_segments'], dict(
+            left_far='uncalibrated', left_near='calibrated', right_far='uncalibrated', right_near='uncalibrated'))
+        remaining = [self.box + [.9], [80., 12., 94., 36., .9], [80., 62., 94., 86., .9]]
+        for _ in range(4):
+            self.tick(left_near + remaining)
+        self.assertEqual(len(refs.boxes), 2)
+        self.tick(left_near + remaining)
+        self.assertFalse(refs.rebuilding)
+        self.assertEqual(len(refs.boxes), 5)
+
+    def test_entire_row_requires_historical_road_and_can_alarm(self):
+        self.algo._vision = Vision(self.params)
+        for box in self.algo._refs.boxes:
+            x0,y0,x1,y1 = map(int,box)
+            self.frame[y0:y1,x0:x1] = (30,30,210)
+        self.tick([self.box + [.9], self.neighbor])
+        self.assertTrue(all(p['road'] for p in self.algo._presence_patches.values()))
+        for box in self.algo._refs.boxes:
+            x0,y0,x1,y1 = map(int,box)
+            self.frame[y0:y1,x0:x1] = (30,160,30)
+        for _ in range(5):
+            self.assertFalse(self.tick([]))
+        self.frame.fill(150)
+        self.assertFalse(self.tick([]))  # The first cleared image is still changing.
+        self.assertFalse(self.tick([]))
+        self.assertFalse(self.tick([]))
+        events = self.tick([])
+        self.assertEqual(events[0].payload['barrier_ids'], ['test:B6', 'test:B7'])
+        self.assertEqual(events[0].payload['error_reason'], 'confirmed_missing')
+
+    def test_migration_feedback_requires_multiple_aligned_samples(self):
+        algo = self.algo
+        algo._refs.boxes = [[x, 12., x+10., 36.] for x in (5., 20., 35., 50.)]
+        self.detector.detect.return_value = [box + [.9] for box in algo._refs.boxes]
+        result = MotionResult('1750','move','1',self.stamp,'test','new',1,'migration_pending',
+                              np.eye(3).tolist(),self.frame.shape[:2],1.)
+        self.vision.align.return_value = SimpleNamespace(valid=True,matrix=np.eye(3),displacement=0.)
+        reference = self.frame.copy()
+        for index in (1, 2, 3):
+            self.frame[-1,-1] += 1
+            algo.observe_offset_candidate(result,reference,self.frame,self.stamp,index*2.,index)
+            if index < 3:
+                self.assertFalse(algo.offset_feedback_ready(result,self.stamp))
+                self.assertIsNone(algo.offset_feedback(result,reference))
+        self.assertTrue(algo.offset_feedback_ready(result,self.stamp))
+        feedback = algo.offset_feedback(result,reference)
+        self.assertEqual(len(feedback.points()[0]), 4)
+        self.assertEqual(feedback.evidence['samples'], 3)
 
     def test_small_position_can_sample_exposed_road(self):
         box = [5., 12., 15., 36.]

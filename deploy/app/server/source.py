@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import datetime
 
 import cv2 as cv
 import numpy as np
@@ -20,6 +21,7 @@ from loguru import logger
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
 
 RETRY_WAIT_S = 3.0
+STREAM_LOST_AFTER_S = 10.0
 TIMEOUT_US = 10000000  # socket 停滞即 abort，由本层重连（新版 ffmpeg 叫 -timeout，老 -stimeout 已废弃）
 
 # 灰帧自愈：cv2 / Debian 7.1 / essentials 构建解 1749 的 HEVC 会持续输出灰帧
@@ -73,6 +75,8 @@ class Reader:
         self._connected = False
         self._started_mono = None
         self._last_frame_mono = None
+        self._last_frame_at = None
+        self._first_after_disconnect = None
         self._reconnects = 0
         self._grey_run = 0
         self._backend = None
@@ -101,6 +105,8 @@ class Reader:
                 "connected": self._connected,
                 "started_mono": self._started_mono,
                 "last_frame_mono": last,
+                "last_frame_at": self._last_frame_at,
+                "first_after_disconnect": self._first_after_disconnect,
                 "seconds_since_frame": (None if last is None
                                         else time.monotonic() - last),
                 "reconnects": self._reconnects,
@@ -108,9 +114,17 @@ class Reader:
                 "grey_run": self._grey_run,
             }
 
-    def _mark_frame(self):
+    def _store_frame(self, frame):
         with self._lock:
-            self._last_frame_mono = time.monotonic()
+            received = time.monotonic()
+            previous = self._last_frame_mono
+            self._frame = frame
+            self._seq += 1
+            self._last_frame_mono = received
+            self._last_frame_at = datetime.now().astimezone()
+            if (self._first_after_disconnect is None or
+                    (previous is not None and received - previous >= STREAM_LOST_AFTER_S)):
+                self._first_after_disconnect = (self._last_frame_mono, self._last_frame_at)
             self._connected = True
 
     def _mark_connected(self, value: bool):
@@ -118,6 +132,7 @@ class Reader:
             self._connected = value
             if not value:
                 self._reconnects += 1
+                self._first_after_disconnect = None
 
     def _is_grey(self, frame) -> bool:
         """抽样估灰度 std；近常量即判灰帧（正常画面 40~70，灰帧 <10）。"""
@@ -273,11 +288,7 @@ class Reader:
                         break
                 else:
                     self._grey_run = 0
-                with self._lock:
-                    self._frame = frame
-                    self._seq += 1
-                    self._last_frame_mono = time.monotonic()
-                    self._connected = True
+                self._store_frame(frame)
             rc = self._proc.poll() if self._proc else None
             self._kill_proc()
             if self._stop.is_set():
@@ -304,11 +315,7 @@ class Reader:
                 if not ok:
                     logger.warning("rtsp 断流，重连")
                     break
-                with self._lock:
-                    self._frame = frame
-                    self._seq += 1
-                    self._last_frame_mono = time.monotonic()
-                    self._connected = True
+                self._store_frame(frame)
             cap.release()
             self._mark_connected(False)
             time.sleep(RETRY_WAIT_S)

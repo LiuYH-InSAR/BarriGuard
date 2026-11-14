@@ -166,6 +166,14 @@ class CameraOffsetRuntime:
         due=mono+self.spec.fast_s
         self._next_check=due if self._next_check is None else min(self._next_check,due)
 
+    def resume_stream(self, mono):
+        self.offset.abandon('stream_lost')
+        self.offset.latest = None
+        self.offset.state.confirmed = self.offset.state.returned = self.offset.state.unavailable = 0
+        self._candidate_frame = self._candidate_frame_id = None
+        self._stable_since = self._stable_previous = None
+        self._next_check = mono
+
     def alignment(self):
         result=self.offset.latest
         valid=(self.offset.pending is None and result is not None

@@ -5,7 +5,7 @@ from camera_motion.vision import Alignment, Vision as BackgroundVision, gray
 
 
 class Vision(BackgroundVision):
-    def road_evidence(self, frame, expected, index, matches, rows, previous_missing):
+    def road_evidence(self, frame, expected, index, matches, rows, previous_missing, *, historical_road=None):
         """从目标下方、排除全部预期水马的多个背景块提取局部路面模型。
 
         这是背景相似度证据，不是路面语义识别。多只同步消失先保留 suspect。
@@ -30,44 +30,81 @@ class Vision(BackgroundVision):
             return False,dict(reason='simultaneous_disappearance',neighbor_ratio=visible)
         # Several consecutive missing barriers can make the row ratio low.
         # The first shared disappearance is still excluded above.
-        if not others or (visible < cfg.neighbor_ratio and visible_count < cfg.min_visible_neighbors):
+        weak_neighbors = not others or (visible < cfg.neighbor_ratio and visible_count < cfg.min_visible_neighbors)
+        if weak_neighbors and (not others or index not in previous_missing or historical_road is None):
             return False,dict(reason='neighbors_unreliable',neighbor_ratio=visible)
-        lab = cv.cvtColor(frame,cv.COLOR_BGR2LAB).astype(np.float32)
-        gray_image = cv.cvtColor(frame,cv.COLOR_BGR2GRAY)
-        forbidden = np.zeros((height,width),np.uint8)
-        for a,b,c,d in expected:
-            cv.rectangle(forbidden,(max(0,int(a)),max(0,int(b))),
-                         (min(width-1,int(c)),min(height-1,int(d))),1,-1)
-        band_end = min(height,y1+int((y1-y0)*cfg.band_height_ratio))
-        road = []
-        textures = []
         patch = max(cfg.min_patch_px, min(cfg.patch_px, short_side // 3))
-        for yy in range(y1,band_end-patch+1,patch):
-            for xx in range(x0,x1-patch+1,patch):
+        profile, count = self._road_profile(frame, expected, (x0,y0,x1,y1), patch)
+        if profile is None:
+            return False,dict(reason='insufficient_road_samples',road_patches=count)
+        target = np.asarray(profile['color'])
+        texture_limit = profile['texture_limit']
+        if weak_neighbors:
+            if (np.linalg.norm(target - historical_road['color']) > cfg.color_distance
+                    or texture_limit > historical_road['texture_limit'] * cfg.max_texture_ratio):
+                return False, dict(reason='historical_road_changed', neighbor_ratio=visible)
+            texture_limit = min(texture_limit, historical_road['texture_limit'])
+        fraction = self._road_fraction(frame[y0:y1,x0:x1], patch, target, texture_limit)
+        return fraction >= cfg.min_road_fraction,dict(reason='road_exposed' if fraction >= cfg.min_road_fraction
+            else 'background_not_confirmed',road_fraction=fraction,road_patches=count,neighbor_ratio=visible,
+            road_color=target.tolist(),texture_limit=texture_limit,historical_road_used=weak_neighbors)
+
+    def road_profile(self, frame, expected, index):
+        """Keep the adjacent road sample only when the occupied site looks different."""
+        height,width = frame.shape[:2]
+        x0,y0,x1,y1 = [int(round(v)) for v in expected[index]]
+        x0,y0,x1,y1 = max(0,x0),max(0,y0),min(width,x1),min(height,y1)
+        cfg = self._p.evidence
+        short_side = min(x1-x0,y1-y0)
+        if short_side < cfg.min_patch_px * 2:
+            return None
+        patch = max(cfg.min_patch_px, min(cfg.patch_px, short_side // 3))
+        profile, _ = self._road_profile(frame, expected, (x0,y0,x1,y1), patch)
+        if (profile is not None and self._road_fraction(frame[y0:y1,x0:x1], patch,
+                profile['color'], profile['texture_limit']) < cfg.min_road_fraction):
+            return profile
+        return None
+
+    def _road_fraction(self, crop, patch, color, texture_limit):
+        lab = cv.cvtColor(crop,cv.COLOR_BGR2LAB)
+        gray_image = cv.cvtColor(crop,cv.COLOR_BGR2GRAY)
+        votes = []
+        for yy in range(0,crop.shape[0]-patch+1,patch):
+            for xx in range(0,crop.shape[1]-patch+1,patch):
+                sample = lab[yy:yy+patch,xx:xx+patch]
+                distance = np.linalg.norm(np.median(sample.reshape(-1,3),axis=0)-color)
+                texture = gray_image[yy:yy+patch,xx:xx+patch].std()
+                votes.append(distance <= self._p.evidence.color_distance and texture <= texture_limit)
+        return float(np.mean(votes)) if votes else 0.0
+
+    def _road_profile(self, frame, expected, box, patch):
+        cfg = self._p.evidence
+        x0,y0,x1,y1 = box
+        band_end = min(frame.shape[0],y1+int((y1-y0)*cfg.band_height_ratio))
+        if band_end-y1 < patch:
+            return None, 0
+        band = frame[y1:band_end,x0:x1]
+        lab = cv.cvtColor(band,cv.COLOR_BGR2LAB).astype(np.float32)
+        gray_image = cv.cvtColor(band,cv.COLOR_BGR2GRAY)
+        forbidden = np.zeros(band.shape[:2],np.uint8)
+        for a,b,c,d in expected:
+            if c >= x0 and a < x1 and d >= y1 and b < band_end:
+                cv.rectangle(forbidden,(max(0,int(a))-x0,max(0,int(b))-y1),
+                             (min(frame.shape[1]-1,int(c))-x0,min(frame.shape[0]-1,int(d))-y1),1,-1)
+        road, textures = [], []
+        for yy in range(0,band.shape[0]-patch+1,patch):
+            for xx in range(0,band.shape[1]-patch+1,patch):
                 if forbidden[yy:yy+patch,xx:xx+patch].any():
                     continue
                 sample = lab[yy:yy+patch,xx:xx+patch]
                 color = np.median(sample.reshape(-1,3),axis=0)
-                if np.linalg.norm(color[1:]-128) > cfg.max_chroma:
-                    continue
-                road.append(color)
-                textures.append(float(gray_image[yy:yy+patch,xx:xx+patch].std()))
+                if np.linalg.norm(color[1:]-128) <= cfg.max_chroma:
+                    road.append(color)
+                    textures.append(float(gray_image[yy:yy+patch,xx:xx+patch].std()))
         if len(road) < cfg.min_road_patches:
-            return False,dict(reason='insufficient_road_samples',road_patches=len(road))
-        target = np.median(road,axis=0)
+            return None, len(road)
         texture_limit = max(cfg.texture_floor,float(np.median(textures)))*cfg.max_texture_ratio
-        votes = []
-        for yy in range(y0,y1-patch+1,patch):
-            for xx in range(x0,x1-patch+1,patch):
-                sample = lab[yy:yy+patch,xx:xx+patch]
-                color = np.median(sample.reshape(-1,3),axis=0)
-                distance = float(np.linalg.norm(color-target))
-                texture = float(gray_image[yy:yy+patch,xx:xx+patch].std())
-                votes.append(distance <= cfg.color_distance and texture <= texture_limit)
-        fraction = float(np.mean(votes)) if votes else 0.0
-        return fraction >= cfg.min_road_fraction,dict(reason='road_exposed' if fraction >= cfg.min_road_fraction
-            else 'background_not_confirmed',road_fraction=fraction,road_patches=len(road),neighbor_ratio=visible,
-            road_color=target.tolist(),texture_limit=texture_limit)
+        return dict(color=np.median(road,axis=0).tolist(),texture_limit=texture_limit), len(road)
 
 
 def visible_box(box, shape, ratio):

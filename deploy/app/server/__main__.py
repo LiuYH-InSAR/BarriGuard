@@ -53,7 +53,7 @@ def offscreen(cfg, img_path: str, repeat: int = 14, camera: str = None,
                         len(res.annots),
                         [(e.kind, e.payload.get("rer")) for e in res.events])
     res = algo.step(frame, repeat)
-    vis = render.draw_status(render.draw_annots(frame.copy(), res.annots),
+    vis = render.draw_status(render.draw_water_result(frame, res.annots, res.debug.get("roi_mask")),
                              res.debug.get("frame_status", "OK"))
     out = os.path.join(outdir, os.path.splitext(os.path.basename(img_path))[0] + "_state.png")
     cv.imwrite(out, vis)

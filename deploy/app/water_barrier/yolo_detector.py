@@ -2,12 +2,9 @@
 import os
 import threading
 import time
-from dataclasses import replace
 from pathlib import Path
 
-import cv2 as cv
-
-from .yolo_geometry import iou, merge_boxes, tile_regions
+from .yolo_geometry import merge_boxes, tile_regions
 
 _MODELS = {}
 _LOCK = threading.Lock()
@@ -38,22 +35,6 @@ class Detector:
         if self._model is None:
             self._load()
         cfg = self._p.inference
-        regions, raw = self._detect_tiles(frame, cfg)
-        merged = merge_boxes(raw, cfg.merge_iou)
-        detail_regions, detail = self._detect_tiles(frame, replace(cfg, tile_px=cfg.detail_tile_px))
-        _, mirrored = self._detect_tiles(cv.flip(frame, 1), cfg)
-        width = frame.shape[1]
-        mirrored = [[width-c,b,width-a,d,score] for a,b,c,d,score in mirrored]
-        # Keep the primary pass's boxes so established positions don't jump.
-        for extra in (detail, mirrored):
-            for box in merge_boxes(extra, cfg.merge_iou):
-                if not any(iou(box, existing) >= cfg.supplementary_iou for existing in merged):
-                    merged.append(box)
-        self.last = dict(regions=regions, detail_regions=detail_regions, raw=raw+detail+mirrored,
-                         merged=merged, seconds=time.perf_counter()-started)
-        return merged
-
-    def _detect_tiles(self, frame, cfg):
         regions = tile_regions(frame.shape, cfg)
         raw = []
         for x0,y0,x1,y1 in regions:
@@ -74,7 +55,10 @@ class Detector:
                         or (y1 < frame.shape[0] and d > crop.shape[0]-margin)):
                     continue
                 raw.append([float(a+x0),float(b+y0),float(c+x0),float(d+y0),float(conf)])
-        return regions, raw
+        merged = merge_boxes(raw, cfg.merge_iou)
+        self.last = dict(regions=regions, raw=raw, merged=merged,
+                         seconds=time.perf_counter()-started)
+        return merged
 
     def detect_whole(self, frame):
         """供离线尺度对比使用，不改变实时后端的分块策略。"""

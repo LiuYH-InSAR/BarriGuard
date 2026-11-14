@@ -1,6 +1,7 @@
 """一个总开关控制全部调试输出；业务证据独立保存。"""
 import cv2 as cv
 import numpy as np
+from server.render import water_canvas
 
 
 class Debugger:
@@ -34,7 +35,7 @@ class Debugger:
     def detection(self, stamp, frame, detector, expected, matches, decisions, stats):
         if not self._p.debug.enabled:
             return
-        image = frame.copy()
+        image = water_canvas(frame)
         cfg = self._p.debug
         for x0,y0,x1,y1 in detector.get('regions',[]):
             cv.rectangle(image,(x0,y0),(x1,y1),(255,200,0),cfg.line_width)

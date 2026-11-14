@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import sys
 import unittest
 
+import cv2 as cv
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
@@ -50,15 +51,25 @@ class RenderIsolation(unittest.TestCase):
     def test_yolo_evidence(self):
         algo = YoloWaterAlgorithm.__new__(YoloWaterAlgorithm)
         algo._annots = [self.box]
-        self.assert_clean(algo._render(self.frame))
+        self.frame[:] = (10, 80, 160)
+        self.original = self.frame.copy()
+        image = algo._render(self.frame)
+        self.assert_clean(image)
+        self.assertEqual(tuple(image[110, 170]), (96, 96, 96))
+        self.assertEqual(tuple(image[40, 30]), render.LEVEL_COLOR["alarm"])
 
     def test_day_snapshot(self):
+        self.frame[:] = (10, 80, 160)
+        self.original = self.frame.copy()
         result = AlgoResult([], [self.box])
         algo = SimpleNamespace(step=lambda frame, now: result, name="water_gap")
         runner = DayRunner(SimpleNamespace(id="1749"), None, algo)
         runner.on_frame(self.frame, 0)
         report = runner.snapshot(datetime.now(timezone.utc))
         self.assertIsNotNone(report.image_jpeg)
+        image = cv.imdecode(np.frombuffer(report.image_jpeg, np.uint8), cv.IMREAD_COLOR)
+        self.assertEqual(tuple(image[110, 170]), (96, 96, 96))
+        self.assertGreater(int(image[40, 55, 2]), int(image[40, 55, 0]) + 40)
         self.assertTrue(np.array_equal(self.frame, self.original))
 
 

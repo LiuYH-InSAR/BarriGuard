@@ -236,6 +236,8 @@ class OffsetModule:
         self.latest = replace(self.pending,status='failed',details={**self.pending.details,
             'accepted':False,'reason':reason})
         self.pending = self._candidate = None
+        self._feedback.clear()
+        self._background = None
         return self.latest
 
     def dump(self):

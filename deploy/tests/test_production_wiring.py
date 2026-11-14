@@ -107,6 +107,35 @@ class ProductionWiring(unittest.TestCase):
         owner.request_check(2)
         owner.process(self.frame,103,3,'requested')
         self.assertEqual(owner.offset.latest.frame_id,'requested')
+    def test_reconnect_restarts_shared_stability_and_abandons_pending_candidate(self):
+        w = self.worker(water=False)
+        self.process(w)
+        self.process(w)
+        owner = w._offset_runtime
+        owner.spec = replace(owner.spec, stable_s=120.)
+        old_view = owner.offset.references.view
+        changed = self.frame.copy()
+        changed[0,0,0] = 20
+        for _ in range(5):
+            self.process(w,frame=changed)
+        self.assertIsNotNone(owner._stable_since)
+        self.assertIsNone(owner.offset.pending)
+        mono = self.clock.monotonic()
+        health = dict(connected=False,last_frame_mono=mono)
+        w._reader = SimpleNamespace(health=lambda:health)
+        w._check_stream_health(mono+10)
+        health.update(connected=True,last_frame_mono=mono+121)
+        w._check_stream_health(mono+121)
+        self.process(w,advance=121,frame=changed)
+        self.assertIsNone(owner.offset.pending)
+        self.assertEqual(owner._stable_since,self.clock.monotonic())
+        self.process(w,advance=120,frame=changed)
+        self.assertIsNotNone(owner.offset.pending)
+        owner.resume_stream(self.clock.monotonic()+20)
+        self.assertIsNone(owner.offset.pending)
+        self.assertIsNone(owner._candidate_frame)
+        self.assertEqual(owner.offset.references.view,old_view)
+
     def test_duplicates_do_not_advance_scene(self):
         w=self.worker();self.process(w)
         version=w._offset_runtime.offset._version
@@ -214,6 +243,7 @@ class ProductionWiring(unittest.TestCase):
                       [[1,0,5],[0,1,0],[0,0,1]],(100,100),1.)
         algo._refs.library.view='new'
         self.assertTrue(algo.apply_shared_offset(r))
+        self.assertTrue(algo._refs.rebuilding)
         self.assertEqual(algo._refs.boxes,[[15.,10.,30.,25.]])
         self.assertEqual(algo._refs.identities,['B1'])
         self.assertFalse(algo.apply_shared_offset(r))
@@ -228,6 +258,24 @@ class ProductionWiring(unittest.TestCase):
         algo.apply_shared_offset(r)
         self.assertEqual(algo._refs.boxes,[]);self.assertEqual(algo._refs.identities,[])
         self.assertFalse(algo._alignment_ok)
+        self.assertTrue(algo._refs.rebuilding)
+        old = algo._store.read_record('previous_baseline.json')
+        self.assertEqual(old['boxes'], [[10,10,25,25]])
+
+    def test_migration_keeps_only_visible_old_slots(self):
+        w=self.worker(lamp=False);self.process(w);self.process(w)
+        algo=w._day_runners['water_gap'].algo
+        algo._refs.boxes=[[10,10,25,25],[85,10,98,25]]
+        algo._refs.identities=['B1','B2'];algo._refs.rows=[[0,1]]
+        old=algo._refs.view;algo._target_reference=old
+        result=MotionResult('cam','task','candidate',self.clock.t,old,'new',99,'committed',
+                            [[1,0,15],[0,1,0],[0,0,1]],(100,100),1.)
+        algo._refs.library.view='new'
+        algo.apply_shared_offset(result)
+        self.assertEqual(algo._refs.identities,['B1'])
+        self.assertEqual(algo._refs.boxes,[[25.,10.,40.,25.]])
+        self.assertTrue(algo._refs.rebuilding)
+        self.assertEqual(algo._store.read_record('previous_baseline.json')['identities'],['B1','B2'])
 
     def test_source_sample_is_atomic_and_does_not_modify_reader_pixels(self):
         from server.source import Reader

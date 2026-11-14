@@ -8,12 +8,25 @@ import cv2 as cv
 TINT, ALPHA = (80, 220, 80), 0.45
 LEVEL_COLOR = {"alarm": (80, 80, 255), "suspected": (80, 160, 255),
                "info": (120, 200, 120)}
+BOX_LABEL_SCALE, BOX_LABEL_THICKNESS = 0.6, 2
 
 
 def overlay(frame, mask):
     layer = frame.copy()
     layer[mask > 0] = TINT
     return cv.addWeighted(layer, ALPHA, frame, 1 - ALPHA, 0)
+
+
+def water_canvas(frame):
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    return cv.cvtColor(gray, cv.COLOR_GRAY2BGR)
+
+
+def draw_water_result(frame, annots, mask=None):
+    canvas = water_canvas(frame)
+    if mask is not None:
+        canvas = overlay(canvas, mask)
+    return draw_annots(canvas, annots)
 
 
 def draw_annots(vis, annots):
@@ -38,7 +51,7 @@ def draw_annots(vis, annots):
             x0, y0, x1, y1 = a.box
             cv.rectangle(vis, (x0, y0), (x1, y1), color, 2)
             cv.putText(vis, a.label, (x0, max(20, y0 - 6)),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                       cv.FONT_HERSHEY_SIMPLEX, BOX_LABEL_SCALE, color, BOX_LABEL_THICKNESS)
         elif a.kind == "point" and len(a.box) == 2:
             x, y = a.box
             cv.circle(vis, (int(x), int(y)), 7, color, 2)
@@ -54,4 +67,11 @@ def draw_status(vis, status: str):
     vis = vis.copy()
     cv.putText(vis, status, (20, 50),
                cv.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+    return vis
+
+
+def draw_stream_lost(vis):
+    vis = vis.copy()
+    cv.putText(vis, "Stream Lost", (12, 24), cv.FONT_HERSHEY_SIMPLEX,
+               BOX_LABEL_SCALE, LEVEL_COLOR["suspected"], BOX_LABEL_THICKNESS)
     return vis

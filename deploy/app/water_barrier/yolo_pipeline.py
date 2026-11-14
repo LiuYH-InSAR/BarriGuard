@@ -3,6 +3,7 @@ import hashlib
 import copy
 import math
 import time
+from collections import deque
 from dataclasses import asdict
 
 import cv2 as cv
@@ -13,11 +14,11 @@ from server.algo import AlgoResult, Annotation, Event
 from .yolo_camera import CameraState
 from .yolo_debug import Debugger
 from .yolo_detector import Detector
-from .yolo_geometry import match_boxes, missing_groups, union_box, warp_boxes
+from .yolo_geometry import build_rows, match_boxes, missing_groups, union_box, warp_boxes
 from .yolo_history import Episodes, History
 from .yolo_params import PARAMS
 from .yolo_policy import Accumulation, Daylight
-from .yolo_reference import References
+from .yolo_reference import References, baseline_segment
 from .yolo_store import Store
 from .yolo_vision import Vision, visible_box
 
@@ -65,6 +66,7 @@ class YoloWaterAlgorithm:
         self._last_observation_stamp = None
         self._last_fingerprint = None
         self._evidence_frame = None
+        self._candidate_water = None
         self._suspect_saved = {}
         self._last_checkpoint = None
         self._last_statistics = {}
@@ -81,11 +83,10 @@ class YoloWaterAlgorithm:
         self._applied_offsets = {tuple(t) for t in data.get('applied_offsets', [])}
         episodes = data.get('episodes',{})
         current_policy = data.get('policy_version') == POLICY_VERSION
-        records = episodes.get('records', {})
-        if not current_policy:
-            # Old timeouts could be based entirely on occlusion. Keep confirmed episodes.
-            records = {key: value for key, value in records.items()
-                       if value.get('error_reason') != 'suspect_timeout'}
+        # Retire timeout alarms from earlier policies; keep confirmed episodes.
+        previous = episodes.get('records', {})
+        records = {key: value for key, value in previous.items()
+                   if value.get('error_reason') != 'suspect_timeout'}
         self._episodes = Episodes(self._p,records,episodes.get('guard_until',0.0))
         if data.get('model_sha256') != self._model_sha:
             # 首次切到V6时不继承旧模型可能错误建立的正常排列，仍保留通知冷却。
@@ -141,6 +142,13 @@ class YoloWaterAlgorithm:
         self._evidence_frame = None
         self._refs.reset_pending()
 
+    def resume_stream(self):
+        """Break evidence continuity before consuming the first new frame."""
+        self.reset()
+        self._daylight.pause()
+        self._last_fingerprint = None
+        self._candidate_water = None
+
     def step(self, frame, now):
         stamp = self._clock()
         self._store.cleanup(stamp)
@@ -156,7 +164,14 @@ class YoloWaterAlgorithm:
         self._last_step = now
         events = []
         if self._offset_module is not None:
+            was_aligned = self._alignment_ok
             self._align(frame,now,stamp)
+            if was_aligned and not self._alignment_ok:
+                self._refs.reset_pending()
+                self._histories = {}
+                self._annots = []
+                self._previous_missing = set()
+                self._evidence_frame = None
             if now>=self._next_detect:
                 self._next_detect=self._advance_due(self._next_detect,now)
                 events=self._detect(frame,now,stamp)
@@ -164,6 +179,9 @@ class YoloWaterAlgorithm:
             if now >= self._next_fast:
                 self._next_fast = now+self._p.timing.fast_s
                 self._fast(frame,now,stamp)
+            if now >= self._next_detect:
+                self._next_detect = self._advance_due(self._next_detect,now)
+                events = self._detect(frame,now,stamp)
         elif now >= self._next_align:
             self._next_align = self._advance_due(self._next_align,now)
             self._align(frame,now,stamp)
@@ -179,12 +197,16 @@ class YoloWaterAlgorithm:
         return dict(state=self._offset_module.state.state if self._offset_module else self._motion.state,status=self._status,view=self._refs.view,
                     model=self._model_id,model_sha256=self._model_sha,
                     baseline_ready=bool(self._refs.boxes),alignment_valid=self._alignment_ok,
+                    baseline_rebuilding=self._refs.rebuilding,
+                    baseline_coverage=self._baseline_coverage(),
+                    baseline_segments=self._baseline_coverage(segments=True),
+                    carried_indices=self._refs.carried_indices,
                     jitter_tolerance=self._offset_module.state.tolerance if self._offset_module else self._motion.tolerance,statistics=self._last_statistics,
                     daylight=self._is_daylight,initial_gap_indices=self._refs.inferred_indices,
                     accumulation={i:self._accumulation.result(i,self._is_daylight)
                                   for i in self._accumulation.records},episodes=self._episodes.dump(),
                     lighting=self._daylight.dump(),observations=self._last_decisions,
-                    baseline_observations=len(self._refs._candidates),
+                    baseline_observations=self._refs.pending_observations,
                     baseline_required=self._p.reference.min_baseline_observations,
                     alignment_details=self._alignment_details,observation_stamp=self._last_observation_stamp)
 
@@ -215,7 +237,7 @@ class YoloWaterAlgorithm:
                 self._matrix = np.asarray(result.matrix, float)
                 if self._refs.boxes:
                     self._refs.baseline_created = self._refs.last_refresh
-                self._status = 'ok' if self._refs.boxes else 'baseline_pending'
+                self._status = self._baseline_status() if self._refs.boxes else 'baseline_pending'
             else:
                 self._accumulation.pause()
                 self._status = result.status
@@ -237,6 +259,8 @@ class YoloWaterAlgorithm:
             if quality['ok']:
                 # 到期后只用历史资料尝试迁移，不再直接用于缺失判断。
                 self._old_refs = self._refs
+                if self._old_refs.boxes:
+                    self._store.archive_baseline(self._old_refs.baseline_dump())
                 self._refs = References(self._p,self._store,self._vision,
                     library=self._offset_module.references if self._offset_module else None)
                 self._finish_reference(frame,now,stamp,quality)
@@ -272,7 +296,8 @@ class YoloWaterAlgorithm:
 
     def _fast(self, frame, now, stamp):
         self._alignment_ok = False
-        self._annots = []
+        # Retain fresh detection boxes only, with no projected old positions.
+        self._annots = [a for a in self._annots if a.label.startswith('Suspect - Uncalibrated')]
         self._last_decisions = {}
         if self._motion.state in (CameraState.DETECT,CameraState.RECOVER):
             alignment = self._refs.align(frame)
@@ -287,6 +312,8 @@ class YoloWaterAlgorithm:
                     self._store.record('movement',stamp,dict(view=self._refs.view,role='before'),self._refs.anchor)
                 logger.info('[{}] camera moved; old view {} disabled; {}',self._camera,self._refs.view,details)
                 self._old_refs = self._refs
+                if self._old_refs.boxes:
+                    self._store.archive_baseline(self._old_refs.baseline_dump())
                 self._refs = References(self._p,self._store,self._vision,
                     library=self._offset_module.references if self._offset_module else None)
                 self._histories = {}
@@ -322,23 +349,30 @@ class YoloWaterAlgorithm:
 
     def _finish_reference(self, frame, now, stamp, quality):
         self._refs.start_view(frame,stamp,quality)
+        self._refs.rebuilding = True
         inherited = False
         if self._old_refs is not None and self._old_refs.boxes:
             # 旧参照只在这里作一次历史关联，绝不重新启用为在线外观参照。
             link = self._old_refs.align(frame)
             if link and link.valid:
                 boxes = warp_boxes(self._old_refs.boxes,link.matrix)
-                if all(visible_box(b,frame.shape,self._p.motion.min_visible_ratio) for b in boxes):
-                    self._refs.boxes = boxes
-                    self._refs.rows = self._old_refs.rows
-                    self._refs.identities = self._old_refs.identities
-                    self._refs.inferred_indices = list(self._old_refs.inferred_indices)
+                visible = [i for i, box in enumerate(boxes)
+                           if visible_box(box, frame.shape, self._p.motion.min_visible_ratio)]
+                if visible:
+                    self._refs.boxes = [boxes[i] for i in visible]
+                    self._refs.rows = build_rows(self._refs.boxes, self._p.reference)
+                    self._refs.identities = [self._old_refs.identities[i] for i in visible]
+                    self._refs.inferred_indices = [j for j, i in enumerate(visible)
+                                                   if i in self._old_refs.inferred_indices]
+                    self._refs.carried_indices = [i for i in range(len(visible))
+                                                  if i not in self._refs.inferred_indices]
                     self._refs.gap_scan_complete = self._old_refs.gap_scan_complete
                     self._refs.baseline_created = stamp
                     self._store.record('baselines',stamp,self._refs.baseline_dump())
                     inherited = True
         if not inherited:
             self._episodes.guard_new_view(stamp)
+        self._refs.rebuild_unmapped = not inherited
         self._old_refs = None
         self._histories = {}
         self._accumulation = Accumulation(self._p)
@@ -357,9 +391,7 @@ class YoloWaterAlgorithm:
         self._checkpoint(stamp)
 
     def _detect(self, frame, now, stamp):
-        if not self._alignment_ok or self._matrix is None or self._refs.expired(stamp):
-            self._unknown(stamp)
-            return []
+        aligned = self._alignment_ok and self._matrix is not None and not self._refs.expired(stamp)
         quality = self._quality(frame,stamp)
         fingerprint = hashlib.sha256(frame.tobytes()).digest()
         if not quality['ok'] or fingerprint == self._last_fingerprint:
@@ -370,6 +402,8 @@ class YoloWaterAlgorithm:
         if self._last_detect is not None and now-self._last_detect > self._p.timing.period_s*self._p.timing.max_gap_periods:
             self._histories = {}
             self._refs.reset_pending()
+            self._previous_missing = set()
+            self._evidence_frame = None
         self._last_detect = now
         try:
             detected = self._detector.detect(frame)
@@ -379,38 +413,54 @@ class YoloWaterAlgorithm:
             logger.exception('[{}] YOLO inference failed; missing judgment skipped',self._camera)
             self._debugger.record('inference_failed',stamp,dict(status=self._status))
             return []
+        if not aligned:
+            self._unknown(stamp)
+            self._annots = self._detection_annots(detected)
+            self._status = 'Uncalibrated'
+            return []
         self._last_observation_stamp = stamp
         self._daylight.observe(stamp,quality)
         daylight = True if self._daylight.mode == 'day' else False if self._daylight.mode == 'night' else None
         if daylight != self._is_daylight:
             # 夜间未检出不进入白天缺失窗口；黎明重新收集15分钟证据。
             self._histories = {}
+            if self._is_daylight is not None:
+                self._refs.reset_pending()
             self._is_daylight = daylight
+        reliable = [box for box in detected if box[4] >= self._p.policy.recovery_confidence]
+        rebuilding = self._refs.rebuilding
+        if rebuilding and daylight is True:
+            self._refs.rebuild_baseline(reliable, self._matrix, stamp)
         if not self._refs.boxes:
             # 夜间漏检不能固化为不完整的新排列；待白天再收敛建立。
-            reliable = [box for box in detected if box[4] >= self._p.policy.recovery_confidence]
-            ready = self._daylight.candidate == 'day' and self._refs.collect(reliable,self._matrix,stamp)
-            self._annots = self._detection_annots(detected)
+            ready = (not rebuilding and self._daylight.candidate == 'day'
+                     and self._refs.collect(reliable,self._matrix,stamp))
+            if self._daylight.candidate != 'day' or (rebuilding and daylight is not True):
+                self._refs.reset_pending()
+            matches, _ = match_boxes(warp_boxes(self._refs.boxes, self._matrix),
+                                     detected, self._p.matching)
+            self._annots = self._detection_annots(detected, matches)
             self._last_decisions = {}
-            self._status = 'ok' if ready else 'baseline_pending'
+            self._status = self._baseline_status() if ready else 'baseline_pending'
             self._debugger.record('baseline_build',stamp,dict(ready=ready,detected=detected,
                          baseline=self._refs.baseline_dump()),frame)
             return []
-        if daylight:
+        if daylight and (not rebuilding or not self._refs.carried_indices):
             self._refs.scan_initial_gaps(stamp)
         expected = warp_boxes(self._refs.boxes,self._matrix)
         diag = np.hypot(*frame.shape[:2])
         error_ratio = self._alignment_details.get('error_px',0)/max(1,diag)
         matches,missing = match_boxes(expected,detected,self._p.matching,error_ratio)
-        if daylight is True:
-            matched_detections = set(matches.values())
+        if daylight is True and not rebuilding:
+            provisional = set(self._refs.carried_indices) | set(self._refs.inferred_indices)
+            matched_detections = {j for i, j in matches.items() if i not in provisional}
             unmatched = [box for j, box in enumerate(detected)
                          if j not in matched_detections and box[4] >= self._p.policy.recovery_confidence]
             if self._refs.extend_baseline(unmatched, self._matrix, stamp):
                 self._refs.scan_initial_gaps(stamp)
                 expected = warp_boxes(self._refs.boxes, self._matrix)
                 matches, missing = match_boxes(expected, detected, self._p.matching, error_ratio)
-        else:
+        elif daylight is not True:
             self._refs.reset_pending()
         decisions,statistics = {},{}
         gray_frame = cv.cvtColor(frame,cv.COLOR_BGR2GRAY).astype(np.float32)
@@ -431,11 +481,18 @@ class YoloWaterAlgorithm:
                 detail = dict(reason='present_reliable' if reliable else 'present_weak',
                     confidence=confidence,detection=matches[index],eligible_for_accumulation=False)
                 accumulated_value = 'present' if reliable else 'weak_present'
-                if reliable:
+                if reliable and daylight is True and index not in self._refs.inferred_indices:
                     patch = self._appearance_patch(gray_frame,expected[index])
                     if patch is not None:
-                        self._presence_patches[identity] = dict(created=stamp,pixels=patch.tolist())
-                    self._refs.verify_slot(index,stamp)
+                        previous_patch = self._presence_patches.get(identity, {})
+                        road = previous_patch.get('road')
+                        road_created = previous_patch.get('road_created')
+                        if road_created is None or stamp-road_created >= self._p.evidence.appearance_max_age_s:
+                            updated = self._vision.road_profile(frame,expected,index)
+                            if updated is not None:
+                                road, road_created = updated, stamp
+                        self._presence_patches[identity] = dict(created=stamp,pixels=patch.tolist(),
+                            road=road,road_created=road_created)
             else:
                 value,detail = self._classify_absence(frame,gray_frame,delta,expected,index,
                     matches,identity,daylight,stamp)
@@ -445,18 +502,21 @@ class YoloWaterAlgorithm:
             result = self._histories[identity].result(stamp)
             accumulated = self._accumulation.observe(identity,stamp,accumulated_value,daylight)
             confirmed = daylight is True and result['alarm']
-            timeout = daylight is True and accumulated_value == 'suspect' and accumulated['timeout']
-            result.update(alarm=bool(confirmed or timeout),recovered=accumulated['recovered'],
-                          error_reason='confirmed_missing' if confirmed else 'suspect_timeout' if timeout else None,
+            result.update(alarm=bool(confirmed),recovered=accumulated['recovered'],
+                          error_reason='confirmed_missing' if confirmed else None,
                           accumulation=accumulated,daylight=daylight)
             statistics[identity] = result
             decisions[index] = dict(value=value,box=expected[index],**detail)
         self._last_decisions = {self._refs.identities[i]:v for i,v in decisions.items()}
         self._previous_missing = set(missing)
+        if rebuilding and daylight is True:
+            confirmed_missing = {i for i in missing if statistics[self._refs.identities[i]]['alarm']
+                or self._episodes.records.get(self._refs.identities[i],{}).get('active')}
+            self._refs.finish_rebuild(self._shape, stamp, confirmed_missing)
         before_episodes = copy.deepcopy(self._episodes.dump())
         notifications = set(self._episodes.decide(self._refs.identities,statistics,stamp))
         self._last_statistics = statistics
-        self._status = 'ok'
+        self._status = self._baseline_status()
         self._annots = self._detection_annots(detected,matches)
         events = []
         active_indices = {index for index in missing if daylight is True
@@ -485,8 +545,7 @@ class YoloWaterAlgorithm:
             payload.update(model=self._model_id,model_sha256=self._model_sha)
             reasons = {i:self._episodes.records.get(i,{}).get('error_reason') for i in ids}
             payload.update(severity='error' if active else 'suspect',error_reasons=reasons,
-                           error_reason=('confirmed_missing' if 'confirmed_missing' in reasons.values()
-                                         else 'suspect_timeout') if active else None,
+                           error_reason='confirmed_missing' if active else None,
                            daylight=daylight)
             should_notify = any(i in notifications for i in ids)
             if should_notify:
@@ -513,11 +572,37 @@ class YoloWaterAlgorithm:
         return events
 
     def _detection_annots(self, detected, matches=None):
+        provisional = set(self._refs.inferred_indices) | set(self._refs.carried_indices)
         identities = {j:self._refs.identities[i].rsplit(':',1)[-1]
-                      for i,j in (matches or {}).items()}
+                      for i,j in (matches or {}).items() if i not in provisional}
         return [Annotation(kind='box',box=tuple(map(int,b[:4])),
-            label=f'{identities.get(i,"D"+str(i))} {b[4]:.2f}',level='info')
+            label=f'{identities.get(i, "Suspect - Uncalibrated")} {b[4]:.2f}',
+            level='info' if i in identities else 'suspected')
             for i,b in enumerate(detected)]
+
+    def _baseline_coverage(self, segments=False):
+        """Report confirmed positions and pending slots in each part of the view."""
+        keys = ('left_far', 'left_near', 'right_far', 'right_near') if segments else ('left', 'right')
+        coverage = dict.fromkeys(keys, 'uncalibrated')
+        provisional = set(self._refs.inferred_indices) | set(self._refs.carried_indices)
+        if not self._alignment_ok or self._matrix is None:
+            return coverage
+        for i, box in enumerate(self._refs.boxes):
+            if not visible_box(box, self._shape, self._p.motion.min_visible_ratio):
+                continue
+            side = 'left' if box[0] + box[2] < self._shape[1] else 'right'
+            area = baseline_segment(box,self._shape) if segments else side
+            state = 'provisional' if i in provisional else 'calibrated'
+            if coverage[area] == 'uncalibrated':
+                coverage[area] = state
+            elif coverage[area] != state:
+                coverage[area] = 'partial'
+        return coverage
+
+    def _baseline_status(self):
+        coverage = self._baseline_coverage(segments=True)
+        pending = [area.replace('_',' ').title() for area,state in coverage.items() if state != 'calibrated']
+        return 'Calibration pending: ' + ', '.join(pending) if pending else 'ok'
 
     def _appearance_patch(self, gray_frame, box):
         a,b,c,d = map(int,box)
@@ -533,13 +618,19 @@ class YoloWaterAlgorithm:
         detail = dict(eligible_for_accumulation=False,inferred_slot=index in self._refs.inferred_indices)
         if daylight is None:
             return 'unknown',dict(detail,reason='lighting_pending')
-        road,evidence = self._vision.road_evidence(frame,expected,index,matches,
-                                                  self._refs.rows,self._previous_missing)
-        detail.update(evidence=evidence)
+        if detail['inferred_slot']:
+            return 'unknown',dict(detail,reason='initial_arrangement_gap')
         patch = self._appearance_patch(gray_frame,box)
         template = self._presence_patches.get(identity)
+        historic_road = None
+        if (daylight is True and template and template.get('road') and template.get('road_created') is not None
+                and 0 <= stamp-template['road_created'] <= self._p.storage.retention_s):
+            historic_road = template['road']
+        road,evidence = self._vision.road_evidence(frame,expected,index,matches,
+            self._refs.rows,self._previous_missing,historical_road=historic_road)
+        detail.update(evidence=evidence)
         changed = False
-        if template and patch is not None and 0 <= stamp-template['created'] <= cfg.appearance_max_age_s:
+        if template and 'pixels' in template and patch is not None and 0 <= stamp-template['created'] <= cfg.appearance_max_age_s:
             old = np.asarray(template['pixels'],dtype=np.float32)
             if float(old.std()) >= cfg.texture_floor:
                 difference = float(np.mean(np.abs((old-old.mean())/old.std()
@@ -558,18 +649,20 @@ class YoloWaterAlgorithm:
                      or (not road and changed and evidence.get('neighbor_ratio',0) >= cfg.neighbor_ratio))
         if occlusion:
             return 'unknown',dict(detail,reason='suspected_occlusion')
-        if road and not moving:
+        still_matches = 'appearance_difference' in detail and not changed
+        if road and not moving and not (evidence.get('historical_road_used') and still_matches):
             return ('missing' if daylight is True else 'unknown'),dict(detail,
                 reason='road_exposed' if daylight is True else 'night_missing_candidate',
-                eligible_for_accumulation=not detail['inferred_slot'])
+                eligible_for_accumulation=True)
         reason = ('small_target_unresolved' if cause == 'small_or_outside'
-                  else 'region_changing' if moving
-                  else 'initial_arrangement_gap' if detail['inferred_slot'] else 'background_unresolved')
+                  else 'region_changing' if moving else 'background_unresolved')
         return 'unknown',dict(detail,reason=reason)
 
     def _unknown(self, stamp):
         self._annots = []
         self._refs.reset_pending()
+        self._previous_missing = set()
+        self._evidence_frame = None
         self._accumulation.pause()
         self._daylight.pause()
         self._last_decisions = {}
@@ -578,8 +671,8 @@ class YoloWaterAlgorithm:
         self._last_statistics = {i:h.result(stamp) for i,h in self._histories.items()}
 
     def _render(self, frame):
-        from server.render import draw_annots
-        return draw_annots(frame,self._annots)
+        from server.render import draw_water_result
+        return draw_water_result(frame,self._annots)
 
     def _checkpoint(self, stamp):
         if (self._offset_module is not None and self._refs.boxes
@@ -615,57 +708,134 @@ class YoloWaterAlgorithm:
             raise ValueError('Shared reference has not committed this version')
         if self._target_reference==result.new_reference:
             self._applied_offsets.add(token)
+            try:
+                self._checkpoint(result.checked_at)
+            except OSError:
+                self._applied_offsets.discard(token)
+                raise
             return False
         if self._target_reference and self._target_reference!=result.old_reference:
             raise ValueError('Water target reference cannot skip a migration')
+        old_baseline = dict(self._refs.baseline_dump(), view=result.old_reference)
         boxes = (warp_boxes(self._refs.boxes, np.asarray(result.matrix, float))
                  if result.matrix is not None else [])
-        if result.matrix is None:
-            self._refs.rows=[]
-            self._refs.identities=[]
-            self._refs.inferred_indices=[]
-            self._refs.gap_scan_complete=False
-            self._refs._candidates=[]
-            self._episodes.guard_new_view(result.checked_at)
         corrections = corrected_boxes or {}
-        for index, identity in enumerate(self._refs.identities):
+        for index, identity in enumerate(self._refs.identities[:len(boxes)]):
             if identity in corrections:
                 box = np.asarray(corrections[identity],float)
                 if box.shape != (4,) or not np.isfinite(box).all() or box[2]<=box[0] or box[3]<=box[1]:
                     raise ValueError('Invalid corrected water box')
                 boxes[index] = box.tolist()
-        self._refs.boxes = boxes
+        if old_baseline['boxes']:
+            self._store.archive_baseline(old_baseline)
+        indices = [i for i, box in enumerate(boxes)
+                   if visible_box(box, self._shape, self._p.motion.min_visible_ratio)]
+        self._refs.boxes = [boxes[i] for i in indices]
+        self._refs.identities = [self._refs.identities[i] for i in indices]
+        self._refs.inferred_indices = [j for j, i in enumerate(indices)
+                                       if i in self._refs.inferred_indices]
+        self._refs.rows = build_rows(self._refs.boxes, self._p.reference)
+        if not indices:
+            self._refs.gap_scan_complete = False
+            self._episodes.guard_new_view(result.checked_at)
+        self._refs.carried_indices = [i for i in range(len(indices)) if i not in self._refs.inferred_indices]
+        self._refs.rebuilding = True
+        self._refs.rebuild_unmapped = self._refs.rebuild_unmapped or not self._refs.carried_indices
+        self._annots = []
         self._refs.reset_pending()
         self._target_reference=result.new_reference
         self._matrix = np.eye(3)
         self._histories = {}
-        self._presence_patches = {}
+        # A validated position can retain its road sample across a mapped move.
+        # The in-box appearance template still needs a fresh view.
+        self._presence_patches = {key:dict(road=patch['road'],road_created=patch.get('road_created'))
+            for key in self._refs.identities if (patch := self._presence_patches.get(key, {})).get('road')}
         self._previous_missing = set()
+        self._evidence_frame = None
+        self._candidate_water = None
         self._accumulation.pause()
         self._refs.baseline_created = result.checked_at
         self._alignment_ok = False  # Revalidate on the next frame before absence decisions.
+        self._store.record('baselines',result.checked_at,self._refs.baseline_dump())
         applied.add(token)
         self._applied_offsets = applied
-        self._store.record('baselines',result.checked_at,self._refs.baseline_dump())
-        self._checkpoint(result.checked_at)
+        try:
+            self._checkpoint(result.checked_at)
+        except OSError:
+            applied.discard(token)
+            raise
         return True
 
     def apply_shared_offset(self,result):
         return self.apply_offset(result)
 
+    def observe_offset_candidate(self, result, reference_frame, frame, stamp, source_ts, frame_id, night=False):
+        if night or result.matrix is None or reference_frame is None:
+            return
+        inferred = set(self._refs.inferred_indices) | set(self._refs.carried_indices)
+        if len(self._refs.boxes) - len(inferred) < 4:
+            return
+        if self._candidate_water is None or self._candidate_water['task'] != result.task_id:
+            self._candidate_water = dict(task=result.task_id, next_sample=source_ts, fingerprint=None,
+                                         samples=deque(maxlen=5))
+        candidate = self._candidate_water
+        if source_ts < candidate['next_sample']:
+            return
+        interval = 2. if len(candidate['samples']) < candidate['samples'].maxlen else 5.
+        candidate['next_sample'] = source_ts + min(interval, self._p.timing.period_s)
+        fingerprint = hashlib.sha256(frame.tobytes()).digest()
+        if fingerprint == candidate['fingerprint']:
+            return
+        candidate['fingerprint'] = fingerprint
+        quality = self._quality(frame,stamp)
+        if not quality['ok'] or quality.get('reference_light',quality['light']) != 'day':
+            candidate['samples'].clear()
+            return
+        matrix = np.eye(3)
+        if str(frame_id) != result.frame_id:
+            aligned = self._vision.align(reference_frame,frame)
+            tolerance = (self._offset_module.state.tolerance if self._offset_module is not None
+                         else self._motion.tolerance)
+            if not aligned.valid or aligned.matrix is None or aligned.displacement > tolerance:
+                candidate['samples'].clear()
+                return
+            matrix = np.linalg.inv(aligned.matrix)
+        boxes = [box for box in self._detector.detect(frame) if box[4] >= self._p.policy.recovery_confidence]
+        candidate['samples'].append(warp_boxes(boxes,matrix))
+
+    def offset_feedback_ready(self, result, stamp):
+        candidate = self._candidate_water
+        if candidate is None or candidate['task'] != result.task_id:
+            return True  # No useful water observations are expected for this task.
+        return len(candidate['samples']) >= 3 and self.offset_feedback(result,None) is not None
+
     def offset_feedback(self,result,frame):
         from camera_motion.contracts import Feedback
-        if result.matrix is None or not self._refs.boxes:return None
-        boxes=self._detector.detect(frame)
-        predicted=warp_boxes(self._refs.boxes,np.asarray(result.matrix,float))
-        matches,_=match_boxes(predicted,boxes,self._p.matching)
-        if len(matches)<4:return None
-        old=[];observed=[]
-        for i,j in matches.items():
-            old.append(((np.asarray(self._refs.boxes[i][:2])+self._refs.boxes[i][2:4])/2).tolist())
-            observed.append(((np.asarray(boxes[j][:2])+boxes[j][2:4])/2).tolist())
+        candidate = self._candidate_water
+        if result.matrix is None or candidate is None or candidate['task'] != result.task_id:
+            return None
+        provisional = set(self._refs.inferred_indices) | set(self._refs.carried_indices)
+        old_boxes = [box for i,box in enumerate(self._refs.boxes) if i not in provisional]
+        predicted = warp_boxes(old_boxes,np.asarray(result.matrix,float))
+        positions = [[] for _ in old_boxes]
+        for sample in candidate['samples']:
+            matches,_ = match_boxes(predicted,sample,self._p.matching)
+            for i,j in matches.items():
+                positions[i].append((np.asarray(sample[j][:2])+sample[j][2:4])/2)
+        old, observed = [], []
+        for box, points in zip(old_boxes,positions):
+            if len(points) < 3:
+                continue
+            center = np.median(points,axis=0)
+            if np.max(np.linalg.norm(points-center,axis=1)) > self._p.motion.max_error_px:
+                continue
+            old.append(tuple((np.asarray(box[:2])+box[2:4])/2))
+            observed.append(tuple(center))
+        if len(old) < 4:
+            return None
         return Feedback(self._camera,result.task_id,'water_gap',result.old_reference,
-            result.new_reference,result.version,result.frame_id,tuple(map(tuple,old)),tuple(map(tuple,observed)))
+             result.new_reference,result.version,result.frame_id,tuple(old),tuple(observed),
+             evidence={'samples':len(candidate['samples'])})
 
     @property
     def offset_reference(self):

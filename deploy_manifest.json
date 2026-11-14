@@ -141,15 +141,15 @@
       "path": "deploy/app/camera_motion/runtime.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 10568,
-      "sha256": "260aa63b72915e42d1cd95cfbb0d4d58f64ebe2c3c58b0b27fc493209973f333"
+      "bytes": 10936,
+      "sha256": "0a5fd91b5e9bdd40a3f598d8f02f01e854432d69315181b62cf2ac53851db025"
     },
     {
       "path": "deploy/app/camera_motion/service.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 16650,
-      "sha256": "c3c7283d07749acefeceef20e204930f91106295f042961f86fed6dbffbcf181"
+      "bytes": 16713,
+      "sha256": "649ace9df822c03743fbc82280a7172e135f87ae3ee5d55e88520d756c9309e8"
     },
     {
       "path": "deploy/app/camera_motion/state.py",
@@ -412,9 +412,9 @@
     },
     {
       "path": "deploy/app/server/__main__.py",
-      "bytes": 4340,
+      "bytes": 4366,
       "hash_mode": "text_lf",
-      "sha256": "059e215b2e4def47eacdb691abc64130ec20b2c6ac3173251ae07d31bbded012",
+      "sha256": "f733f1a9f20f232e91cf1b986b38032f9b6ab34c344ed7df776584e32f7f3e4b",
       "configurable": false
     },
     {
@@ -426,9 +426,9 @@
     },
     {
       "path": "deploy/app/server/agents/day.py",
-      "bytes": 2558,
+      "bytes": 2499,
       "hash_mode": "text_lf",
-      "sha256": "fa2de484c87f4e198f58c11dead5f910e5ce0ff978dca3393cdc8b754c71a0c7",
+      "sha256": "2d0d989aa4461e1debc963d31312cbafc6a18f5000fe955a429981072a13f100",
       "configurable": false
     },
     {
@@ -510,9 +510,9 @@
     },
     {
       "path": "deploy/app/server/render.py",
-      "bytes": 2292,
+      "bytes": 2893,
       "hash_mode": "text_lf",
-      "sha256": "9e903bcc50f32557b4e157584f1337af21cd6d5437511e21975efc418e2c08a5",
+      "sha256": "897188343304204c6619a054fb018abf3aa3f9ca7d6cb4f975246684feade718",
       "configurable": false
     },
     {
@@ -531,16 +531,16 @@
     },
     {
       "path": "deploy/app/server/source.py",
-      "bytes": 12211,
+      "bytes": 12629,
       "hash_mode": "text_lf",
-      "sha256": "620c35f29b93503a0a4a3db7a9a1b1394a46efed2aad6266de58b872b02fa95d",
+      "sha256": "cb5157223a3f1d20472150a554734a151d9a7bc5719db8383b87faa1ce484e52",
       "configurable": false
     },
     {
       "path": "deploy/app/server/worker.py",
-      "bytes": 28078,
+      "bytes": 30528,
       "hash_mode": "text_lf",
-      "sha256": "a1e1320fc9b8d8d9ad2e3465a2d313fa273e1e6ba5737791d79e886f6bd59163",
+      "sha256": "a65e7fd58de3a1777ef091d8411f3c14a3de8e0897282e642e629e8864d8abe9",
       "configurable": false
     },
     {
@@ -552,9 +552,9 @@
     },
     {
       "path": "deploy/app/water_barrier/online_blocks.py",
-      "bytes": 6999,
+      "bytes": 7005,
       "hash_mode": "text_lf",
-      "sha256": "5437f65840e9e37903fb10991f0703f44b8f4268a809d4c88bc25777bf03f33d",
+      "sha256": "11a70bac6571a78fc63b21c9b30d95f513563e596c0442824de4b040a80dc09f",
       "configurable": false
     },
     {
@@ -587,16 +587,16 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_debug.py",
-      "bytes": 2220,
+      "bytes": 2266,
       "hash_mode": "text_lf",
-      "sha256": "e23ea5b051b3774252714c6a5698ddf46895b34e412cf56fca24229463c1a730",
+      "sha256": "cc963bcf65665c251861c0247dd7f5d8035534e4d38ac975933911f2a8ad6230",
       "configurable": false
     },
     {
       "path": "deploy/app/water_barrier/yolo_detector.py",
-      "bytes": 3901,
+      "bytes": 3088,
       "hash_mode": "text_lf",
-      "sha256": "6c7e36631bfb80f1464ff201d11b6b01a236bbf673319c8057ef59316314eb89",
+      "sha256": "d42a549961ac16a4e4eb5ef4bf3c34816fc4e1139a0ef349badd2d4beabcf065",
       "configurable": false
     },
     {
@@ -615,16 +615,16 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_params.py",
-      "bytes": 24538,
+      "bytes": 24426,
       "hash_mode": "text_lf",
-      "sha256": "d17b26048a5d03fc1e58a1121dba877bb478a31e28bb5bffc2450f1e6271d878",
+      "sha256": "12378caaed7aeeb6a05c00af4a2f54813ab73290db57fc41fbce3702ca33ee2f",
       "configurable": true
     },
     {
       "path": "deploy/app/water_barrier/yolo_pipeline.py",
-      "bytes": 37305,
+      "bytes": 47392,
       "hash_mode": "text_lf",
-      "sha256": "0c75956ccd9e905d277d0727026b1e11c02298e3733b9f593c3dd08c59fb16f6",
+      "sha256": "832dee14ae40006ba8c9c6ee3248aef7264d876c875b6d387d2155e10e5902c4",
       "configurable": false
     },
     {
@@ -636,23 +636,23 @@
     },
     {
       "path": "deploy/app/water_barrier/yolo_reference.py",
-      "bytes": 10191,
+      "bytes": 14186,
       "hash_mode": "text_lf",
-      "sha256": "838b2458de487621b05e623996af020eaf9ef9688fe520b642d361c4efdcb1ef",
+      "sha256": "2721d44dfdc19e3996e2ef8bd2df59cf4fd348d71120cd898e1d4f6691f2db24",
       "configurable": false
     },
     {
       "path": "deploy/app/water_barrier/yolo_store.py",
-      "bytes": 3932,
+      "bytes": 4114,
       "hash_mode": "text_lf",
-      "sha256": "7ccfee61d3cca88a81d63a46f86996fad407d40e3ad5c450ad8a428a3ab3e7d4",
+      "sha256": "5c0e6867bd05ef413d06a5258af724ddec10b609921ddec77739f82080849b2e",
       "configurable": false
     },
     {
       "path": "deploy/app/water_barrier/yolo_vision.py",
-      "bytes": 4213,
+      "bytes": 6444,
       "hash_mode": "text_lf",
-      "sha256": "bac5c177cf86319f256e9207538bc747523005bce12680113666b3bcde158ba2",
+      "sha256": "1da198a71340e80474d085014b7863a4b8766573c04bb3f1a7dda24474ba0b16",
       "configurable": false
     },
     {
@@ -736,8 +736,8 @@
       "path": "deploy/tests/test_lamp_release_lifecycle.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 5589,
-      "sha256": "7911c130b54cc3c693f544dcfc14c1949a247d530e97d5357b5f3f8e080e79d4"
+      "bytes": 7454,
+      "sha256": "654aeec8453b958012be7483035443bb9dd74c7ea0016b97790de06afac27246"
     },
     {
       "path": "deploy/tests/test_lamp_report_health.py",
@@ -792,14 +792,14 @@
       "path": "deploy/tests/test_production_wiring.py",
       "hash_mode": "text_lf",
       "configurable": false,
-      "bytes": 27252,
-      "sha256": "4ab0377eca380dc6519d1b427bc0d5e870fed640539273a29c6fd9c8a92ad62e"
+      "bytes": 29648,
+      "sha256": "997447707d38d98b1dca95744498f9d1aa26640e394cd9267d0373b12034b672"
     },
     {
       "path": "deploy/tests/test_render_isolation.py",
-      "bytes": 2706,
+      "bytes": 3274,
       "hash_mode": "text_lf",
-      "sha256": "0e1be5f8202668fe81082b0c93d4a49638aeb0b855fb9353d3ad9372fd445cfe",
+      "sha256": "1b691149f0e937021425b9b0a00cf99c39cc0f14e39366e9d009d95d54d93ce9",
       "configurable": false
     },
     {
@@ -811,9 +811,9 @@
     },
     {
       "path": "deploy/tests/test_water_gap_regression.py",
-      "bytes": 6226,
+      "bytes": 12375,
       "hash_mode": "text_lf",
-      "sha256": "124de5d7c49aeac380de71cda12acbdd28b47bd79e2f978da585cb0e28ab4ae5",
+      "sha256": "f9b6370a2e4e90bcbd88ca8cbb36e613015ba6bd7fb75343097b7d31a80a9ee4",
       "configurable": false
     },
     {
