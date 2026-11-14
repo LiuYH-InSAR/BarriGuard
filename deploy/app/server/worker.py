@@ -1,9 +1,11 @@
 """Camera runtime: one shared offset owner, water runner and YOLO lamp adapter."""
 import dataclasses
+import os
 import threading
 import time
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 
 import cv2 as cv
 import numpy as np
@@ -628,16 +630,39 @@ class Runtime:
         for worker in self.workers.values():
             if worker._offset_runtime:protected.append(worker._offset_runtime.offset.store.root)
             if worker._lamp_adapter:protected.append(worker._lamp_adapter.controller.archive.root)
+        self.history_archive = self._make_history_archive()
+        if self.history_archive:
+            protected.append(self.history_archive.root)
         self.sweeper.protect(protected)
         self._water_sweeper.protect(protected)
         self._stop = threading.Event()
         self._thread = None
+
+    def _make_history_archive(self):
+        archive = os.environ.get("BARRIGUARD_ARCHIVE_DIR")
+        if not archive:
+            return None
+        from water_barrier.yolo_params import PARAMS
+        from .history_archive import HistoryArchive
+        from .logging_setup import log_dir_for
+
+        out = getattr(self.cfg, "output_dir", None)
+        server = getattr(self.cfg, "server", None) or {}
+        logs = log_dir_for(out, server.get("log_dir"))
+        motion = {cam: worker._offset_runtime.offset.store.root for cam, worker in self.workers.items()
+                  if worker._offset_runtime}
+        lamps = {cam: worker._lamp_adapter.controller.archive.root for cam, worker in self.workers.items()
+                 if worker._lamp_adapter}
+        return HistoryArchive(Path(archive), PARAMS.storage.root, Path(out) if out else None,
+                              Path(logs) if logs else None, motion, lamps)
 
     def start(self):
         for w in self.workers.values():
             w.start()
         self.sweeper.start()
         self._water_sweeper.start()
+        if self.history_archive:
+            self.history_archive.start()
         self._thread = threading.Thread(target=self._pump, daemon=True,
                                         name="runtime-pump")
         self._thread.start()
@@ -645,6 +670,8 @@ class Runtime:
 
     def stop(self):
         self._stop.set()
+        if self.history_archive:
+            self.history_archive.stop()
         self.sweeper.stop()
         self._water_sweeper.stop()
         for w in self.workers.values():

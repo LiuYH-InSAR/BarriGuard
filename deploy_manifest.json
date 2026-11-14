@@ -6,9 +6,9 @@
   "files": [
     {
       "path": ".dockerignore",
-      "bytes": 260,
+      "bytes": 268,
       "hash_mode": "text_lf",
-      "sha256": "3c734875fea0e734b10287008c9d2eb7da5927f311ea1c1ebfde96a32d4770f4",
+      "sha256": "957d6c55c28beccc56d5bc438df4ec7c5fc574525fbd7ca34bf6f8803951561c",
       "configurable": false
     },
     {
@@ -20,9 +20,9 @@
     },
     {
       "path": ".gitignore",
-      "bytes": 517,
+      "bytes": 527,
       "hash_mode": "text_lf",
-      "sha256": "7291199058fcd9586c7dce3e42cff4c2bfbe130d6f961a8fc48b46da7ff1f183",
+      "sha256": "b4ade43feea847cc2db43df8c3f8808827daf117216511333ceaef57b5e8a43c",
       "configurable": false
     },
     {
@@ -62,9 +62,9 @@
     },
     {
       "path": "SERVER_DEPLOYMENT.md",
-      "bytes": 6961,
+      "bytes": 8279,
       "hash_mode": "text_lf",
-      "sha256": "fd8926405ca83f7268dfd9af60589f0144f2cd3ce9024daf8f658c0710db3fb2",
+      "sha256": "6bd41fe51d6ecc5d28089f2e4925799170c775f573ec0df90f5b90bb573df962",
       "configurable": false
     },
     {
@@ -474,6 +474,13 @@
       "configurable": false
     },
     {
+      "path": "deploy/app/server/history_archive.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 9928,
+      "sha256": "c9e8709cbba79dd6206c01232bf789d5e76fcc7b1f47c099cf4e57bbde7d5d4a"
+    },
+    {
       "path": "deploy/app/server/logging_setup.py",
       "bytes": 2638,
       "hash_mode": "text_lf",
@@ -538,9 +545,9 @@
     },
     {
       "path": "deploy/app/server/worker.py",
-      "bytes": 30528,
+      "bytes": 31788,
       "hash_mode": "text_lf",
-      "sha256": "a65e7fd58de3a1777ef091d8411f3c14a3de8e0897282e642e629e8864d8abe9",
+      "sha256": "092b0399b8d1d92d616233be60b1fdb1ff73a4d201185c8f2fe3546ab27b7f23",
       "configurable": false
     },
     {
@@ -685,9 +692,9 @@
     },
     {
       "path": "deploy/docker-compose.yml",
-      "bytes": 919,
+      "bytes": 994,
       "hash_mode": "text_lf",
-      "sha256": "2d8d857d7aa9bfdd6fe88a3e64d2b80a1b2e534d8f8e081c454d15321a05f9fa",
+      "sha256": "ff766eb7dceb1b9c4e99d5cd1280012b86cdf02ca3baae16835f2ee3a0796e0e",
       "configurable": false
     },
     {
@@ -710,6 +717,13 @@
       "configurable": false,
       "bytes": 26283,
       "sha256": "9c2bf60390ddb3f11c2c8a4e23a1ddda4d2defd516de2352d52d51c208691f92"
+    },
+    {
+      "path": "deploy/tests/test_history_archive.py",
+      "hash_mode": "text_lf",
+      "configurable": false,
+      "bytes": 5447,
+      "sha256": "0ec64a031c7ba53110f35967b9c091553cb75703eabbaadd499ad754c5de9adb"
     },
     {
       "path": "deploy/tests/test_lamp_observability.py",

@@ -63,8 +63,27 @@ docker compose up -d --no-build barriguard
 | `data/` | `/app/data` | 原服务器结果、日志、灯光录像及结果 |
 | `output/water_yolo/` | `/app/output/water_yolo` | 水马中间结果、证据和检查点 |
 | `output/model_settings/` | `/app/output/model_settings` | 推理库运行缓存 |
+| `archive/` | `/app/archive` | 按香港日期、摄像头和模块保存的历史副本 |
 
 这些目录不提交GitHub，重建容器不会清除宿主机结果。服务器按自己的画面建立参照，不加载本地回放的累计和报警状态。
+
+## 历史归档
+
+每天香港时间 08:05 执行一次归档，复制已满 24 小时的资料。目录为
+`archive/YYYY-MM-DD/<camera>/<module>/<category>/`。各模块的运行检查点仍在
+`output/`，运行目录的滚动清理继续按已有保留规则执行。
+归档副本从复制完成起保留七天。每天归档时清理过期文件和空目录。
+当天 08:05 后首次启动会补跑当日批次。同一批次完成后，当天重启会跳过。
+手动放入归档的离线资料以归档内文件的修改时间计龄。
+
+- `water/` 包含水马基准、观测、疑似和告警证据、报告及对应的调试文件。
+- `camera_motion/` 包含参考图和迁移记录。
+- `lamps/final/` 包含逐灯归档、参考图和最终晨报文件。07:00 晨报归到前一个夜晚。
+- `archive/YYYY-MM-DD/logs/` 收录已切分的服务日志，以原文件名日期归档。
+
+离线视频放在 `lamps/videos/`。每次离线分析使用
+`lamps/runs/<run>/inputs.json`、`params/`、`analysis/` 和 `results/`。
+`inputs.json` 记录源视频相对路径、分析时段及代码和模型版本。服务器按现有设置生成资料，例如关闭晨报 JPEG 落盘时，只归档其 JSON 和参考图。
 
 本机无Docker引擎，尚未实测Linux镜像构建和服务器性能。首次服务器部署须执行build及自检；本机规则测试不能代替真实缺失、长期停车和连续整夜验收。
 

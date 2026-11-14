@@ -11,6 +11,7 @@ services:
     environment:
       TZ: Asia/Shanghai
       BARRIGUARD_CONFIG: /app/deploy/config.yaml
+      BARRIGUARD_ARCHIVE_DIR: /app/archive
     ports:
       - "${BARRIGUARD_HTTP_PORT:-8000}:8000"
     volumes:
@@ -20,6 +21,7 @@ services:
       - ../output/model_settings:/app/output/model_settings
       - ../output/camera_motion:/app/output/camera_motion
       - ../output/lamp_state:/app/output/lamp_state
+      - ../archive:/app/archive
     cpus: "${BARRIGUARD_CPUS:-2}"
     mem_limit: ${BARRIGUARD_MEMORY:-4g}
     restart: unless-stopped
